@@ -3,4 +3,4 @@
 # 欢迎关注！！！来聊天，来玩耍～
 
 
-![image](https://github.com/user-attachments/assets/838e8f24-3b7c-409b-ad46-e53749ae423a)
+<img src="https://github.com/user-attachments/assets/838e8f24-3b7c-409b-ad46-e53749ae423a" width="300">
