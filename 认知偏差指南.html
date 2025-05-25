@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>人类认知偏差交互式探索</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Visualization & Content Choices:
+    * Report Info: 99 Cognitive Biases (ID, Names, Def, Ex, Sugg from CSV) + Expert Commentary, Thematic Categories, Intro/Summary Text (from Markdown d14ab856-d8bb-41aa-a756-9baa0031b7ea).
+    * Goal: Facilitate comprehensive exploration and deep understanding of cognitive biases.
+    * Presentation Methods:
+        * Bias List (Sidebar): Interactive HTML list, searchable and filterable by theme. Interaction: Click to view details in main panel. Justification: Standard and efficient navigation for a large collection of items. Method: HTML/JS.
+        * Bias Details (Main Panel): Structured text blocks for each bias (ID, Chinese Name, English Name, Definition, Example, Suggestion, Expert Commentary). Interaction: Content revealed on selection. Justification: Clear and detailed presentation of specific information. Method: HTML/JS.
+        * Thematic Categories (Main Panel View): HTML table summarizing themes. Bar chart (Chart.js/Canvas) visualizing distribution of biases per theme. Interaction (Chart): Hover for details (count per theme). Justification: Provides a visual and structured overview of bias categorization. Method: HTML Table, Chart.js.
+        * Introduction/Summary (Main Panel View): Formatted text blocks. Justification: Sets context, provides background, and offers key takeaways. Method: HTML.
+        * Search/Filter (Sidebar): Text input for search, dropdown/buttons for theme filtering. Interaction: Real-time filtering of the bias list. Justification: Enables efficient information retrieval and focused exploration. Method: JS.
+        * Sequential Navigation (Main Panel): "Previous" and "Next" buttons when viewing a bias. Interaction: Loads adjacent bias. Justification: Supports linear reading flow. Method: JS.
+    * NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 700px; /* Adjusted for better viewing */
+            margin-left: auto;
+            margin-right: auto;
+            height: 350px; /* Adjusted base height */
+            max-height: 450px; /* Adjusted max height */
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 400px;
+            }
+        }
+        /* Custom scrollbar for bias list */
+        .bias-list-container::-webkit-scrollbar {
+            width: 8px;
+        }
+        .bias-list-container::-webkit-scrollbar-track {
+            background: #f1f5f9; /* slate-100 */
+        }
+        .bias-list-container::-webkit-scrollbar-thumb {
+            background: #94a3b8; /* slate-400 */
+            border-radius: 4px;
+        }
+        .bias-list-container::-webkit-scrollbar-thumb:hover {
+            background: #64748b; /* slate-500 */
+        }
+        .content-fade-enter {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        .content-fade-enter-active {
+            opacity: 1;
+            transform: translateY(0);
+            transition: opacity 300ms ease-out, transform 300ms ease-out;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+    <div id="app" class="flex flex-col md:flex-row min-h-screen">
+        <aside class="w-full md:w-80 lg:w-96 bg-slate-100 p-4 md:p-6 border-r border-slate-200 flex-shrink-0 md:h-screen md:sticky md:top-0">
+            <h1 class="text-2xl font-bold text-blue-700 mb-6">认知偏差指南</h1>
+            
+            <nav class="mb-6">
+                <ul>
+                    <li><a href="#" id="nav-intro" class="block py-2 px-3 hover:bg-blue-100 hover:text-blue-700 rounded-md transition-colors">引言</a></li>
+                    <li><a href="#" id="nav-themes" class="block py-2 px-3 hover:bg-blue-100 hover:text-blue-700 rounded-md transition-colors">主题分类与概览</a></li>
+                </ul>
+            </nav>
+
+            <div class="mb-4">
+                <input type="text" id="search-input" placeholder="搜索偏差 (中文名、英文名、ID)" class="w-full p-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+            </div>
+
+            <div class="mb-4">
+                <label for="theme-filter" class="block text-sm font-medium text-slate-700 mb-1">按主题筛选:</label>
+                <select id="theme-filter" class="w-full p-2 border border-slate-300 rounded-md bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                    <option value="all">所有主题</option>
+                </select>
+            </div>
+
+            <h2 class="text-lg font-semibold text-slate-700 mb-2">认知偏差列表</h2>
+            <div id="bias-list-container" class="bias-list-container overflow-y-auto h-[calc(100vh-380px)] md:h-[calc(100vh-360px)] pr-2">
+                <ul id="bias-list" class="space-y-1">
+                    </ul>
+            </div>
+        </aside>
+
+        <main id="main-content" class="flex-1 p-4 md:p-8 lg:p-10 overflow-y-auto">
+            </main>
+    </div>
+
+    <script>
+        const biasesData = [
+            { id: 1, chineseName: "幸存者偏差", englishName: "Survivorship Bias", definition: "系统性地高估成功的概率，因为成功者比失败者更显眼。我们常看到成功者，而忽略了大量的失败者（沉默的数据）。", example: "只看到成功的摇滚明星、作家、企业家，忽略了“失败者墓地”中的大多数人；股票指数只包含“幸存者”。", suggestion: "经常“参观”那些失败的项目、投资和职业的“墓地”，以更清醒地认识成功的真实概率。", expertCommentary: "此偏差与可得性偏误（ID 11）相关，成功的案例因其可见性而更容易被回忆。在评估机会时，主动搜寻“沉默的数据”至关重要。", theme: "概率与统计推理类偏差" },
+            { id: 2, chineseName: "游泳者身材错觉", englishName: "Swimmer's Body Illusion", definition: "混淆选择标准和结果。误以为某项活动带来了某种特质，而实际上是拥有该特质的人更容易被选中从事该活动。", example: "认为游泳能练出好身材（实际是身材好的人被选去游泳）；认为去哈佛就能变聪明/成功（哈佛选择了聪明/有潜力的人）；认为用某种化妆品能变美（模特天生丽质）。", suggestion: "区分选择标准和结果。警惕那些需要你努力达到的目标（如好身材、高收入、幸福），它们可能更多是筛选因素而非努力的结果。", expertCommentary: "这是对因果关系理解的常见错误，需要仔细甄别相关性与因果性，避免将结果误认为原因。", theme: "信念、记忆与注意类偏差" },
+            { id: 3, chineseName: "集群错觉", englishName: "Clustering Illusion", definition: "倾向于在随机事件中看到不存在的模式或规律。大脑会主动寻找甚至发明模式。", example: "看到云彩像人脸、烤面包片像圣母玛利亚；在随机数据（如股市波动、V1轰炸落点）中发现“规律”；认为掷骰子连续出现相同结果后必然改变。", suggestion: "对发现的模式保持怀疑，首先考虑纯粹的随机性。如果觉得某个模式“好得难以置信”，找数学家做统计检验。", expertCommentary: "人类大脑天生倾向于寻找模式，这在进化中具有优势，但在面对纯粹随机数据时则容易出错。理解概率和统计是关键。", theme: "概率与统计推理类偏差" },
+            { id: 4, chineseName: "社会认同", englishName: "Social Proof", definition: "倾向于认为别人的行为是正确的，尤其是在不确定时。越多的人相信或做某事，我们就越觉得它是对的（从众心理）。", example: "看到别人抬头望天自己也跟着看；音乐会上跟着别人鼓掌；模仿当地人选择餐馆；罐头笑声。", suggestion: "保持怀疑，尤其当一家公司宣称其产品“最受欢迎”时。记住：就算有五千万人说蠢话，它也还是蠢话。", expertCommentary: "从众行为在特定情境下是适应性的，但也容易被操纵。独立思考和批判性评估是抵御此偏误的良方。", theme: "社会性偏差" },
+            { id: 5, chineseName: "沉没成本谬误", englishName: "Sunk Cost Fallacy", definition: "因为已经在某事上投入成本（时间、金钱、精力、爱），即使前景不佳，也倾向于继续投入，以“避免浪费”过去的投入。", example: "坚持看完难看的电影（因为付了钱）；不愿放弃亏损的股票或失败的项目；维持不愉快的关系（因为投入了太多感情）。", suggestion: "做决策只应关注未来的成本和收益，忘记已经无法挽回的沉没成本。", expertCommentary: "此偏误与损失规避（ID 32）相关，人们不愿接受损失。理性决策应基于未来预期，而非过去投入。", theme: "决策制定类偏差" },
+            { id: 6, chineseName: "互惠偏误", englishName: "Reciprocity", definition: "对于别人的给予（即使是不请自来的），会感到有亏欠和回报的压力。这种倾向根植于人类进化，是合作的基础，但也容易被利用。", example: "接受克利须那教派送的花后更易捐款；接受供应商的小恩惠（如球赛门票）后倾向于下订单；接受免费小样后购买产品。", suggestion: "警惕那些微小的、看似无害的好处，它们可能让你之后付出更多。如果不想回报或购买，一开始就最好拒绝。", expertCommentary: "互惠是社会交往的基石，但商业和营销中常利用此心理。保持警觉，区分真诚的善意和策略性的给予。", theme: "社会性偏差" },
+            { id: 7, chineseName: "确认偏误 (Part 1)", englishName: "Confirmation Bias (Part 1)", definition: "倾向于寻找、解释和记住能证实我们现有信念或假设的信息，而忽略或轻视与之矛盾的信息（反驳证据）。", example: "减肥者只关注体重下降的日子，忽略体重增加的日子；管理者只看到支持新战略成功的迹象，忽视反面证据；达尔文系统性地记录反驳他理论的观察。", suggestion: "主动寻找反驳自己观点的信息（“反驳证据”）。留意“例外”或“特殊情况”的说法，它们常掩盖反驳证据。像达尔文一样，特别关注并记录那些与自己理论相悖的现象。", expertCommentary: "这是最普遍且影响深远的偏误之一。克服它需要极大的认知努力和智识上的谦逊。", theme: "信念、记忆与注意类偏差" },
+            { id: 8, chineseName: "确认偏误 (Part 2)", englishName: "Confirmation Bias (Part 2)", definition: "确认偏误是所有思维谬误之母，在信念（世界观、宗教、哲学）、投资、职业规划等领域普遍存在，尤其当信念模糊时更强。", example: "相信“人性本善”或“人性本恶”的人都能找到日常证据；算命、经济预测的模糊性使其容易被“证实”；商业记者倾向于先有理论再找证据；自助书籍只展示成功案例。", suggestion: "“杀死你的宠儿”（奎勒-库奇）：挑战自己珍视的信念。写下自己的信念，并主动、系统地寻找反驳证据。这很难，但至关重要。", expertCommentary: "此偏误强调了确认偏误的根本性。模糊的信念尤其容易受到其影响，因为它们更容易被各种信息“证实”。", theme: "信念、记忆与注意类偏差" },
+            { id: 9, chineseName: "权威偏误", englishName: "Authority Bias", definition: "倾向于过分相信权威人物的意见和指令，即使他们在其专业领域之外发言或明显错误。", example: "盲从专家、医生、CEO、政府首脑的建议；米尔格拉姆电击服从实验；航空业中副驾驶不敢质疑机长。", suggestion: "挑战权威。思考权威人士的发言是否真的基于其专业知识，他们过往的成功率如何，以及他们的动机是什么。不要被头衔、制服等权威符号迷惑。", expertCommentary: "尊重专业知识是必要的，但盲从权威则可能导致严重错误。批判性思维在此尤为重要。", theme: "社会性偏差" },
+            { id: 10, chineseName: "对比效应", englishName: "Contrast Effect", definition: "我们对事物的判断受到其前后或同时出现的参照物的影响，而非基于其绝对值。我们难以做出绝对判断。", example: "先看贵的再看便宜的觉得更划算（汽车加配）；手先入冰水再入温水觉得烫；打折商品（对比原价）显得更值。", suggestion: "尽量做绝对判断。警惕微小的、渐进的变化（如通货膨胀）。评价事物本身，不受旁边参照物影响。不要和超模朋友一起出去约会。", expertCommentary: "此效应常被营销和谈判策略利用。建立内在的价值评估标准有助于抵抗其影响。", theme: "决策制定类偏差" },
+            { id: 11, chineseName: "可得性偏误", englishName: "Availability Bias", definition: "依据记忆中信息的易获取程度（而非客观频率）来判断事件的可能性或重要性。生动、新近、重复的信息更容易被记起。", example: "高估空难/谋杀风险（媒体报道多），低估糖尿病/胃癌风险（报道少）；医生倾向用熟悉疗法；基于容易获得的数据（如财报）而非难获取但更重要的信息（如员工士气）做决策。", suggestion: "依靠客观数据和统计思考，而非直觉和容易想到的案例。与想法不同、经验不同的人交流，获取多方面输入。", expertCommentary: "媒体报道的倾向性是此偏误的重要来源。主动寻求更全面的数据和信息是关键。", theme: "信念、记忆与注意类偏差" },
+            { id: 12, chineseName: "“先苦后甜”偏误", englishName: "It'll-Get-Worse-Before-It-Gets-Better Fallacy", definition: "相信情况在变好之前会先变得更糟。这是一种确认偏误的变体，无论情况如何发展，都能印证预测者的“智慧”。", example: "庸医/顾问预测治疗/改革初期情况会恶化；某些末世论预言认为世界毁灭是天堂降临的前提。", suggestion: "听到“情况会先变坏再变好”时要警惕。要求清晰、可验证的里程碑来判断措施是否真的有效，而不是盲目相信预言。", expertCommentary: "这种说法常被用来推卸责任或争取时间。客观的衡量标准和阶段性评估是必要的。", theme: "信念、记忆与注意类偏差" },
+            { id: 13, chineseName: "故事偏误", englishName: "Story Bias", definition: "大脑喜欢故事，倾向于将杂乱的事实编织成有意义、连贯的故事，即使这会简化和扭曲现实。我们更容易被故事吸引，而非抽象事实。", example: "用个例（某司机的故事）解释复杂事件（桥梁坍塌）；事后解释历史事件的“原因”；广告中的故事营销；小说比统计报告更吸引人。", suggestion: "区分故事和事实。探究故事背后的信息、数据和背景。问自己：讲述者是谁？意图何在？隐藏了什么？对简洁、完美的叙事保持警惕。", expertCommentary: "故事是强大的沟通工具，但也可能掩盖真相。批判性地审视叙事结构和其依据至关重要。", theme: "信念、记忆与注意类偏差" },
+            { id: 14, chineseName: "后见之明偏误", englishName: "Hindsight Bias", definition: "事后觉得事件的发生是显而易见的、可预测的（“我早就知道”）。这会让我们高估自己的预测能力，变得傲慢并承担过多风险。", example: "事后解释金融危机、战争爆发、选举结果、某人分手的原因，觉得一切都理所当然。", suggestion: "写预测日记，并与实际发展对比。阅读历史细节（而非教科书总结），体会当时的不确定性。阅读旧报纸。", expertCommentary: "此偏误阻碍我们从经验中学习，因为它让我们错误地认为过去是清晰可预测的。", theme: "信念、记忆与注意类偏差" },
+            { id: 15, chineseName: "过度自信效应", englishName: "Overconfidence Effect", definition: "系统性地高估自己的知识和预测能力。我们以为自己知道的比实际知道的要多。专家比普通人更易过度自信。", example: "多数人认为自己驾驶技术/受欢迎程度/能力高于平均水平；对未来事件（如股价、项目完成时间）的预测区间过于狭窄；项目规划常低估时间和成本。", suggestion: "对自己的知识和预测保持怀疑。对于预测，尤其是来自专家的，要持批判态度。在做计划时，优先考虑悲观情景，参考类似项目的实际数据（基准率）。", expertCommentary: "过度自信是许多决策失误的根源。寻求外部反馈和进行“事前验尸”有助于校准自信水平。", theme: "自我感知类偏差" },
+            { id: 16, chineseName: "“司机”知识", englishName: "Chauffeur Knowledge", definition: "指那些能言善辩、看起来像专家但实际上只是在复述或表演的人所拥有的知识，而非通过努力深刻理解获得的“真实知识”。", example: "新闻主播；某些夸夸其谈的CEO或发言人；能记住演讲稿但无法回答深入问题的司机（普朗克司机的传说）。", suggestion: "区分真正的专业知识和“司机知识”。真正的专家了解自己知识的边界（能力圈），会承认“我不知道”。警惕那些从不承认自己无知的人。", expertCommentary: "识别真伪专业知识对于获取可靠信息至关重要。关注个体是否能超越表面陈述，进行深入探讨。", theme: "自我感知类偏差" },
+            { id: 17, chineseName: "控制错觉", englishName: "Illusion of Control", definition: "倾向于相信我们能够影响那些实际上我们完全无法控制的事情。", example: "掷骰子时用力大小以期影响结果；认为自己按电梯“关门”按钮或人行道按钮有用（安慰剂按钮）；通过意念或祈祷影响世界；球迷认为自己的动作能影响比赛。", suggestion: "专注于你能真正影响的少数重要事情。对于其他一切，接受其不可控性（Que sera, sera）。", expertCommentary: "区分可控与不可控因素，有助于将精力投入到真正能产生影响的领域，减少不必要的焦虑。", theme: "自我感知类偏差" },
+            { id: 18, chineseName: "激励过敏倾向", englishName: "Incentive Super-Response Tendency", definition: "人们会对激励机制做出强烈且迅速的反应，通常是直接针对激励本身，而非其背后的宏大意图。", example: "按捕鼠数量奖励导致养殖老鼠；按新发现手稿数量付费导致考古学家撕碎手稿；按小时付费的律师可能拖延时间；目标奖金可能导致经理人操纵目标而非发展业务。", suggestion: "设计激励时要仔细考虑其可能带来的意外后果（“别问理发师你是否需要理发”）。分析他人行为时，首先问：他/她的激励是什么？", expertCommentary: "激励是强大的行为驱动力，但设计不当可能导致与初衷相悖的结果。务必审慎评估激励措施的潜在影响。", theme: "决策制定类偏差" },
+            { id: 19, chineseName: "回归均值", englishName: "Regression to Mean", definition: "在随机波动中，极端表现（无论是极好还是极坏）之后，倾向于出现更接近平均水平的表现。我们常将其误解为因果关系。", example: "背痛极差时去看医生，之后好转（可能只是回归正常）；高尔夫打出极差成绩后去请教，下次变好；股票表现极好/差后趋向平均；批评差生后成绩提高，表扬优生后成绩下降。", suggestion: "警惕极端表现后的变化，不要轻易归因于干预措施。认识到随机波动和回归均值的自然存在。", expertCommentary: "这是统计学上的普遍现象，常被误解为干预措施有效。在评估效果时需排除回归均值的影响。", theme: "概率与统计推理类偏差" },
+            { id: 20, chineseName: "结果偏误", englishName: "Outcome Bias", definition: "根据决策的结果来评判决策的好坏，而不是根据决策过程本身的质量（基于当时信息和逻辑）。", example: "一个冒险的决策成功了就认为是好决策；一个谨慎的决策失败了就认为是坏决策；事后评价历史事件（如珍珠港袭击）的决策是否明智。", suggestion: "评价决策时要看过程（理由是否理性、信息是否充分），而非仅仅看结果，尤其当运气和外部因素扮演重要角色时。坚持理性的决策过程，即使某次结果不好。", expertCommentary: "优质的决策过程并不能保证好的结果，尤其在充满不确定性的环境中。关注过程有助于长期提高决策质量。", theme: "决策制定类偏差" },
+            { id: 21, chineseName: "选择悖论", englishName: "Paradox of Choice", definition: "过多的选择反而会导致内心瘫痪、做出更差的决策以及决策后的满意度下降。", example: "超市果酱实验（24种vs 6种，选择少时销量更高）；网上交友选择过多导致只看外貌；面对众多选项难以抉择，且事后易后悔。", suggestion: "事先仔细思考自己想要什么，写下标准并坚持。学会满足于“足够好”(Good enough)的选择，而非追求虚幻的“最佳”(Best)选择。", expertCommentary: "“少即是多”在此适用。明确需求和标准，接受“满意”而非“最优”，可以减轻决策负担，提高满意度。", theme: "决策制定类偏差" },
+            { id: 22, chineseName: "喜好偏误", englishName: "Liking Bias", definition: "我们越喜欢一个人（因为外表吸引力、相似性、对方也喜欢我们、熟悉感等），就越倾向于从他那里购买东西或帮助他。", example: "购买漂亮销售员推荐的东西；更容易帮助与自己相似的人（镜像模仿）；奉承有效；特百惠派对利用朋友关系销售。", suggestion: "将人与事分开。评价一个产品、提议或请求时，应独立于对其提出者的喜好。假装你不喜欢那个销售员。", expertCommentary: "情感因素在决策中扮演重要角色。有意识地将对人的情感与对事的判断分离是理性的表现。", theme: "社会性偏差" },
+            { id: 23, chineseName: "禀赋效应", englishName: "Endowment Effect", definition: "对于我们拥有的东西，我们感觉它比它实际的价值更高。我们卖出自己物品时要求的价格，通常高于我们愿意为同样物品支付的买入价。", example: "马克杯实验（拥有者估价远高于购买者）；房主高估自己房子的价值；不愿扔掉旧物或出售收藏品；拍卖后期竞拍者感觉物品已“属于”自己。", suggestion: "不要依恋事物。把自己的财产看作是“宇宙”暂时寄存在你这里的。记住它随时可能被收回。", expertCommentary: "此效应与损失规避（ID 32）相关，拥有的东西被视为潜在的“损失”。客观看待物品价值，而非基于所有权。", theme: "决策制定类偏差" },
+            { id: 24, chineseName: "奇迹", englishName: "Coincidence", definition: "低估看似不可能的巧合事件发生的可能性。在足够大的样本或时间跨度下，罕见但并非不可能的事件是会发生的。", example: "内布拉斯加州教堂爆炸前所有唱诗班成员都因不同原因迟到；想到某位久未联系的朋友，他正好打电话来；极其相似的巧合（如两个同名同住酒店的人）。", suggestion: "不要对罕见但并非不可能的巧合反应过度。用概率思维分析，很多“奇迹”在统计上是可能发生的。更令人惊讶的是如果它们从未发生。", expertCommentary: "大数定律和概率论有助于理解巧合的发生。许多看似神奇的事件，在统计学上并非不可能。", theme: "概率与统计推理类偏差" },
+            { id: 25, chineseName: "团体迷思", englishName: "Groupthink", definition: "在一个紧密团结的团体中，为了维持和谐和一致性，成员倾向于（无意识地）压抑不同意见、建立无懈可击和一致同意的错觉，导致做出不明智或冒险的决策。", example: "肯尼迪政府入侵猪湾的失败决策；瑞士航空因过度自信的扩张战略而崩溃。", suggestion: "如果身处一致性过高的团体，要勇于提出异议，哪怕冒着被排挤的风险。作为领导者，要有意指定“唱反调”的人（魔鬼代言人）。", expertCommentary: "追求团队和谐是自然的，但过度则可能扼杀批判性思维。鼓励异议和多元视角是防范团体迷思的关键。", theme: "社会性偏差" },
+            { id: 26, chineseName: "忽视概率偏误", englishName: "Neglect of Probability", definition: "我们对事件发生的可能性（概率）不敏感，而主要对事件结果的量级（强度、影响大小、奖金多少）做出反应。", example: "买彩票（被巨额奖金吸引而忽略极低中奖概率）；害怕坐飞机甚于害怕糖尿病（尽管后者风险高得多）；对降低1%的风险和降低到0%的风险感受差异巨大（零风险偏好）。", suggestion: "区分事件发生的概率和事件结果的强度。学习概率知识，理性评估风险，不要被结果的量级冲昏头脑。", expertCommentary: "此偏误常与可得性偏误（ID 11）和情感启发式（ID 66）共同作用。量化思考和概率素养是重要的对抗工具。", theme: "概率与统计推理类偏差" },
+            { id: 27, chineseName: "稀缺性谬误", englishName: "Scarcity Error", definition: "当物品或机会变得稀少或难以获得时，我们会认为它更有价值。“物以稀为贵”。", example: "“限量供应”、“仅此一天”的营销策略；收藏邮票、古董车等稀有物品；画廊给画标注“已售”红点；被剥夺选择权后该选项更有吸引力（逆反心理/罗密欧朱丽叶效应）。", suggestion: "根据物品的价格和实际益处来判断其价值，而非其稀缺性或是否有他人（如“伦敦来的医生”）也感兴趣。警惕“最后机会”的诱惑。", expertCommentary: "稀缺性是强大的心理触发器，常被商业利用。评估价值应基于物品本身的效用和价格，而非其可获得性。", theme: "决策制定类偏差" },
+            { id: 28, chineseName: "忽视基本概率偏误", englishName: "Base-Rate Neglect", definition: "在判断具体个体属于哪个类别或事件发生的概率时，过于关注具体描述信息（个体信息），而忽略了更普遍的背景统计信息（基础概率）。", example: "判断戴眼镜、听莫扎特的德国瘦子是卡车司机还是文学教授（卡车司机基数大得多）；医学诊断中先考虑常见病而非罕见病。", suggestion: "始终要考虑基本概率（整体统计数据）。在有生动、具体的描述时，尤其要警惕此偏误。先看统计数据，再结合个体信息。", expertCommentary: "生动的个体信息往往比抽象的统计数据更具说服力，导致此偏误。贝叶斯思维有助于整合基础概率和个体信息。", theme: "概率与统计推理类偏差" },
+            { id: 29, chineseName: "赌徒谬误", englishName: "Gambler's Fallacy", definition: "错误地认为，如果某个独立随机事件在过去发生的频率高于（或低于）预期，那么它在未来发生的频率就会反向补偿（存在“宇宙平衡力量”）。", example: "轮盘赌连续多次出黑色后，认为下次更可能出红色；认为连续生了几个女孩后，下一个更可能是男孩；玩彩票选择“很久没出现”的号码。", suggestion: "认识到独立事件之间没有记忆和平衡力。过去的随机结果不影响未来独立事件的概率。警惕将回归均值（适用于非独立系统）与独立随机事件混淆。", expertCommentary: "这是对独立随机事件的典型误解。理解“独立性”是关键，骰子和轮盘没有记忆。", theme: "概率与统计推理类偏差" },
+            { id: 30, chineseName: "锚定效应", englishName: "The Anchor", definition: "在做估计或决策时，我们的判断会受到第一个接触到的信息（锚点）的强烈、不合理的影响，即使这个信息与估计本身无关。后续的调整往往围绕锚点进行，且调整不充分。", example: "社保号码后两位影响对红酒出价；电话号码后几位影响对历史事件年份的猜测；商品标价的“建议零售价”；谈判中的初始报价；房产估价受挂牌价影响。", suggestion: "意识到锚点的存在及其影响。在做重要估计时，主动寻找或设定自己的、基于理性的锚点，或从多个角度进行估计，避免被无关信息锚定。", expertCommentary: "初始信息具有不成比例的影响力。在谈判和估价中尤其需要警惕，并主动设定自己的理性锚点。", theme: "决策制定类偏差" },
+            { id: 31, chineseName: "归纳法偏误", englishName: "Induction", definition: "从有限的个别观察（过去经验）中得出普遍的、看似确定性的结论，并以此预测未来。容易将过去的模式视为未来的保证。", example: "圣诞节前被持续喂养的火鸡认为农夫很友好，直到被宰；连续上涨的股票让人认为它会一直涨下去；基于过去数次成功经验过度自信。", suggestion: "对通过归纳得出的结论保持谨慎，认识到它们只是暂时的、或然的，未来随时可能出现反例。对“一直如此”的情况要警惕，尤其是涉及复杂系统时。", expertCommentary: "归纳法是科学发现的重要工具，但其结论并非绝对可靠。对“黑天鹅事件”（ID 75）的警惕是必要的。", theme: "信念、记忆与注意类偏差" },
+            { id: 32, chineseName: "损失规避", englishName: "Loss Aversion", definition: "我们对损失带来的负面情绪感受，比获得同等价值带来的积极情绪要强烈得多（通常认为是两倍左右）。", example: "失去100元的痛苦大于得到100元的快乐；更易被“不这样做会损失什么”的宣传打动；持有亏损股票不愿卖出（害怕确认损失）。", suggestion: "意识到这种情感上的不对称性。在做决策时，尽量客观看待收益和损失的实际价值，不要被对损失的过度恐惧所左右。", expertCommentary: "这是前景理论的核心概念之一，深刻影响风险决策。框架效应（ID 42）常利用损失规避心理。", theme: "决策制定类偏差" },
+            { id: 33, chineseName: "社会性懈怠", englishName: "Social Loafing", definition: "在群体中工作时，如果个人贡献不被明确衡量或难以区分，个体会倾向于比单独工作时付出更少的努力。", example: "拔河比赛人越多，个人平均用力越小；团队会议中发言不如单独思考积极；责任分散（没人为团队决策负全责）；团队倾向于冒更大风险（风险转移）。", suggestion: "让个人贡献和责任尽可能可见化、可测量。保持团队规模小且成员专业化、多元化。提倡能者多劳的精英文化。", expertCommentary: "明确个体责任和贡献是提高团队效率的关键。小团队和清晰分工有助于减少此效应。", theme: "社会性偏差" },
+            { id: 34, chineseName: "指数增长偏误", englishName: "Exponential Growth", definition: "我们对于指数增长（即按百分比增长）缺乏直观理解，倾向于用线性思维去推断，从而严重低估其长期影响。", example: "低估复利的力量；对通货膨胀率/事故增长率的长期影响不敏感；纸张对折50次的厚度远超想象（远超地日距离）。", suggestion: "不要依赖直觉判断指数增长。使用“倍增时间”法则（如用70除以增长率百分比）或其他计算工具来具体化理解其影响。", expertCommentary: "人类大脑更适应线性而非指数变化。在理解复利、疫情传播等现象时，借助计算工具至关重要。", theme: "概率与统计推理类偏差" },
+            { id: 35, chineseName: "赢家的诅咒", englishName: "Winner's Curse", definition: "在拍卖或竞标中（尤其是对价值不确定的物品），最终的出价最高者（赢家）往往支付了过高的价格，超过了物品的实际价值，从而成为事实上的“输家”。", example: "公司并购支付过高溢价；石油开采权拍卖；频谱拍卖；在线竞拍（如eBay）；图书版权拍卖。", suggestion: "参加拍卖要极其谨慎。事先设定一个基于理性估值的最高出价，并为了抵消赢家诅咒的影响而打个折扣（如巴菲特建议的扣除20%）。坚守价格，绝不超出。", expertCommentary: "在信息不对称和竞争激烈的拍卖中常见。理性估值和严格遵守出价上限是避免诅咒的策略。", theme: "决策制定类偏差" },
+            { id: 36, chineseName: "基本归因错误", englishName: "Fundamental Attribution Error", definition: "在解释他人行为时，倾向于高估其内在个性因素（性格、意图、能力）的作用，而系统性地低估外部情境和环境因素的影响。", example: "将公司成功/失败主要归因于CEO个人能力而非行业/经济大环境；将战争归咎于某个领导人；认为演员扮演的角色就是其本人性格。", suggestion: "分析他人行为时，要充分考虑情境因素。理解人们的行为很大程度上受所处环境和外部压力的影响，而非完全由其内在特质决定。", expertCommentary: "此偏误在跨文化比较中也存在差异。更多考虑情境因素有助于更全面和公正地理解他人行为。", theme: "社会性偏差" },
+            { id: 37, chineseName: "错误因果关系", englishName: "False Causality", definition: "将仅仅是相关联的两个事件误认为是因果关系，或者混淆了因果方向（是A导致B，还是B导致A，或者两者都是由第三方因素C导致的）。", example: "苏格兰赫布里底群岛居民认为体虱能治病；火灾损失越大，出动的消防员越多；德国出生率和送子鹳数量同步下降；家庭藏书量与学生成绩相关。", suggestion: "相关性不等于因果关系。仔细审视两个相关事件之间的关系，探究是否存在其他潜在解释、混淆因素或因果倒置的可能性。", expertCommentary: "这是科学研究和日常推理中最常见的错误之一。寻找潜在的混淆变量和考虑反向因果是必要的。", theme: "信念、记忆与注意类偏差" },
+            { id: 38, chineseName: "光环效应", englishName: "Halo Effect", definition: "当我们对某人或某事的某个单一（通常是突出的、易于感知的）积极或消极特征形成印象后，这种印象会“泛化”或影响到我们对其其他未被观察或难以评估的特征的整体评价。", example: "认为外表好看的人更聪明、更诚实、更友善；基于公司某项业务的成功而认为其整体战略、管理、文化都优秀；基于某CEO的魅力而高估其能力。", suggestion: "独立评估不同特征。避免让单一、突出的印象（尤其是第一印象）影响整体判断。深入了解事实，而非只看光环或表面。", expertCommentary: "第一印象的强大影响力是光环效应的体现。结构化评估和多角度考察有助于减少其影响。", theme: "社会性偏差" },
+            { id: 39, chineseName: "替代路径", englishName: "Alternative Paths", definition: "在评估一个已发生的结果（尤其是成功）时，只关注实际发生的路径，而忽略了其他同样可能发生但未发生的路径（替代路径），尤其容易忽视那些可能导致失败的路径。", example: "玩俄罗斯轮盘赌成功后感觉自己很英明，忽视了可能死亡的其他四个路径；通过高风险投资获得成功后，忘记了可能导致破产的其他路径；只看到成功创业者的路径而忽略大量失败者。", suggestion: "评估成功（尤其是通过冒险获得的成功）时，要充分考虑所有可能的替代路径及其概率。理性看待风险，认识到高风险成功并不等同于高能力。", expertCommentary: "此偏误与幸存者偏差（ID 1）相关。进行“事前验尸”或思考“如果……会怎样”的情景有助于识别被忽略的路径。", theme: "概率与统计推理类偏差" },
+            { id: 40, chineseName: "预测错觉", englishName: "Forecast Illusion", definition: "过度相信预测的准确性，尤其是来自“专家”的长期预测。事实证明，对于复杂系统，长期预测基本不可能准确。", example: "经济学家对经济衰退、利率的预测；政治分析家对政权更迭、选举结果的预测；技术专家对未来技术发展的预测。", suggestion: "对预测（尤其是长期、复杂系统预测）保持极度批判的态度。关注预测者的动机（激励机制）和过往预测记录（准确率）。承认世界充满不确定性。", expertCommentary: "复杂系统的内在不确定性使得长期精确预测极为困难。关注预测的假设和范围，而非盲信结论。", theme: "信念、记忆与注意类偏差" },
+            { id: 41, chineseName: "联合谬误", englishName: "Conjunction Fallacy", definition: "错误地认为多个具体条件同时发生的概率（例如：A和B都发生），比仅发生其中一个更普遍、单独的条件的概率（例如：仅A发生）更高。具体、生动、看似合理的细节会增加叙述的可信度，从而误导我们。", example: "认为“琳达是银行出纳员并且积极参与女权运动”比“琳达是银行出纳员”更可能；认为“油价飙升导致石油消耗减少30%”比“石油消耗减少30%”更可能。", suggestion: "记住，条件越多，限制越具体，联合发生的概率就越低（不可能高于任何一个单独条件的概率）。警惕那些听起来更“合理”、更具体但增加了额外条件的描述。", expertCommentary: "这是对概率基本规则的违背。更具体的描述可能更具代表性（启发式），但联合概率必然更低。", theme: "概率与统计推理类偏差" },
+            { id: 42, chineseName: "框架效应", englishName: "Framing", definition: "对于同一个问题或同一组信息，不同的表述方式（即不同的“框架”）会导致我们做出截然不同的决策。", example: "“手术后90%存活率”听起来比“10%死亡率”更让人愿意接受手术；“99%无脂”的肉听起来比“1%脂肪”更健康；问题被描述为“机会”而非“损失”时，人们更倾向于冒险。", suggestion: "意识到任何信息都带有呈现框架。尝试用不同的方式（例如从收益框架切换到损失框架）重新表述同一个问题。关注信息的核心内容本身，而非其包装方式。", expertCommentary: "语言的框架深刻影响感知和决策。主动从不同角度审视信息，有助于揭示框架效应的影响。", theme: "决策制定类偏差" },
+            { id: 43, chineseName: "行动偏误", englishName: "Action Bias", definition: "在不确定或情况不明朗时，即使无所作为可能是更好的选择，我们仍倾向于采取行动。行动让我们感觉更好、看起来更果断、更能掌控局面。", example: "足球守门员扑点球时倾向于扑向两侧而非留在概率更高的中间；医生在诊断不明时倾向于开药或干预而非等待观察；新手投资者在市场波动时频繁交易。", suggestion: "在情况不明朗、缺乏清晰理由支持行动时，要克制行动的冲动。认识到等待和观察也是一种积极的策略，尤其是在复杂环境中。", expertCommentary: "行动能带来控制感，但在某些情况下，“不行动”才是更优策略。评估行动的必要性和潜在后果是关键。", theme: "决策制定类偏差" },
+            { id: 44, chineseName: "不作为偏误", englishName: "Omission Bias", definition: "在结果同样糟糕的情况下，我们倾向于认为因不作为（未能采取行动）导致的损害，比因积极行动导致的同等损害，在道德上更可接受、主观感受上更不坏。", example: "不给孩子打疫苗（不作为）导致生病，似乎比打疫苗（行动）产生副作用更能被接受；持有垃圾股亏损，似乎比主动买入垃圾股亏损感觉更好；见死不救似乎比主动害人罪恶感轻。", suggestion: "客观评估行动和不作为的后果，它们可能导致相同的结果。不要因为不作为看起来更“被动”或“无辜”而偏好它，尤其当不作为会带来明确损害时。", expertCommentary: "此偏误与行动偏误（ID 43）相对。对责任的感知差异影响了对行动和不作为的评价。", theme: "决策制定类偏差" },
+            { id: 45, chineseName: "自利偏误", englishName: "Self-Serving Bias", definition: "倾向于将成功归因于自己的内在因素（能力、努力、才华），而将失败归咎于外部因素（运气差、环境不利、他人阻碍）。", example: "考试得了A是因为自己聪明努力，得了F是因为试卷太难或老师不公；投资赚钱是自己眼光好，亏钱是市场不好或被别人误导；团队项目成功是自己贡献大，失败是队友不行。", suggestion: "客观看待成功和失败的原因，承认自身不足和外部因素的作用。征求那些敢于提供诚实（甚至负面）反馈的朋友或导师的意见。", expertCommentary: "这是维护自尊的常见心理机制。虽然有一定适应性，但过度则阻碍学习和成长。", theme: "自我感知类偏差" },
+            { id: 46, chineseName: "享乐适应症", englishName: "Hedonic Treadmill", definition: "我们对积极或消极的生活事件（如加薪、中奖、失恋、事故）的情感反应（幸福感或痛苦感）往往是短暂的，我们会很快适应新的状态，幸福水平会大致回归到之前的基线水平。", example: "中彩票的巨大幸福感通常在几个月后消失；升职加薪带来的快乐感会很快适应；失恋或事故带来的痛苦感会随着时间推移而减轻。", suggestion: "不要高估物质财富或单一事件带来的长期幸福感。追求那些能带来持续满足感的活动（如投入爱好、深度人际关系、获得自主权、学习新技能）。认识到适应是人类的常态。", expertCommentary: "幸福感具有相对稳定性。持续的幸福感更多来源于过程和内在满足，而非外部事件的短期刺激。", theme: "自我感知类偏差" },
+            { id: 47, chineseName: "自我选择偏误", englishName: "Self-Selection Bias", definition: "当我们观察的样本本身就是基于某种选择标准产生的，而我们又身处其中时，容易对统计数据或普遍情况产生错误的理解。", example: "抱怨公司/行业里异性太少（因为自己就是多数性别群体中的一员）；惊讶于自己竟然存在（只有存在的人才会思考这个问题）；调查邮件列表订阅者对邮件内容的满意度（不满意的早就退订了，样本有偏）。", suggestion: "认识到自己的观察角度可能带有固有的选择性。在分析数据或现象时，思考样本是如何产生的，是否存在选择偏差。", expertCommentary: "观察者本身的选择和处境会影响其所观察到的样本。在进行推断时，需警惕样本的代表性问题。", theme: "概率与统计推理类偏差" },
+            { id: 48, chineseName: "联想偏误", englishName: "Association Bias", definition: "我们的大脑会将时间上或逻辑上接近的事物联系起来，即使它们之间没有真实的因果关系，从而形成错误的判断或条件反射。", example: "穿“幸运”内裤参加重要活动；因为一次糟糕的经历而对某个食物或地方产生持久的厌恶；广告将产品与美好的情感（如快乐、年轻）联系起来；迁怒于带来坏消息的人（“杀信使综合症”）。", suggestion: "区分经验中的有效关联和纯粹的偶然联想。审视那些看似相关的联系是否真的存在因果关系，还是仅仅是巧合或情感投射。", expertCommentary: "这是经典条件反射的一种体现。区分偶然联系和真实因果是理性思考的要求。", theme: "信念、记忆与注意类偏差" },
+            { id: 49, chineseName: "新手的运气", englishName: "Beginner's Luck", definition: "将早期偶然获得的成功归因于自己的非凡能力或技巧，从而产生过度自信，并在后续活动中承担更高风险，最终可能导致失败。这是联想偏误的一种特殊形式。", example: "新手赌徒第一次赢钱后加大赌注；初期几次投资恰逢牛市获得成功后变得非常冒进；拿破仑或希特勒早期在一些小战役中的胜利可能助长了他们后来的冒险战略。", suggestion: "对早期或意外的成功保持警惕和清醒。区分运气和实力。不要仅凭几次成功就认为自己掌握了规律，尝试用科学方法检验自己的“能力”。", expertCommentary: "早期成功可能是随机的，而非能力的体现。客观评估成功因素，避免过度自信（ID 15）。", theme: "自我感知类偏差" },
+            { id: 50, chineseName: "认知失调", englishName: "Cognitive Dissonance", definition: "当我们的信念、态度或行为之间出现相互矛盾时，会产生一种令人不适的紧张感。为了减轻这种不适，我们会下意识地调整其中一个元素（通常是较易改变的态度或信念）来使它们重新协调一致。", example: "伊索寓言中吃不到葡萄的狐狸说葡萄酸（改变对葡萄的态度）；为自己购买了不满意的汽车找优点（合理化购买行为）；为自己撒了个小谎而辩解说“这没什么大不了的”（改变对行为的看法）。", suggestion: "坦诚面对自己的错误和内在的不一致性。认识到自我辩解和合理化是人类的常态，但要警惕它可能扭曲我们对现实的认知。", expertCommentary: "追求认知一致性是人类的基本动机。认识到这种倾向有助于更客观地审视自己的信念和行为。", theme: "信念、记忆与注意类偏差" },
+            { id: 51, chineseName: "双曲贴现", englishName: "Hyperbolic Discounting", definition: "对于时间上距离我们更近的收益（或成本），我们倾向于给予其不成比例的高权重（即“情感利率”急剧升高），导致对延迟满足缺乏耐心，偏好即时回报。", example: "宁愿今天得到1000元，也不愿一个月后得到1100元（尽管后者利率极高）；无法抵制零食诱惑而放弃长期减肥目标；拖延症（推迟不愉快任务）。", suggestion: "认识到即时满足的强大诱惑力。尽量克服冲动，为长远利益做出选择。可以预设承诺机制（如设定强制性截止日期）来对抗这种倾向。", expertCommentary: "这是人类偏好即时满足的体现，对储蓄、健康行为等长期规划构成挑战。预承诺策略是有效的应对方法。", theme: "决策制定类偏差" },
+            { id: 52, chineseName: "“因为”理由辩护", englishName: "Because Justification", definition: "即使给出的理由非常蹩脚、无关紧要甚至是同义反复，只要在请求或解释中加入了“因为...”这个词，人们就更容易接受或顺从。", example: "复印机插队实验：说“因为我要复印几页”和说“因为我赶时间”的成功率几乎一样高，远高于不给理由。用空洞的“运营原因”来安抚航班延误的乘客。", suggestion: "当别人请求你或解释行为时，仔细评估“因为”后面的内容是否真的构成了有效的理由。反之，当你需要简单说服别人时，记得给出一个（哪怕是形式上的）理由。", expertCommentary: "“因为”一词触发了人们对合理性的期望，即使理由本身不充分。关注理由的实质内容而非形式。", theme: "社会性偏差" },
+            { id: 53, chineseName: "决策疲劳", englishName: "Decision Fatigue", definition: "做出一系列决策会消耗我们的意志力和心智资源（如同电池电量耗尽）。决策越多、越复杂，意志力消耗越大，导致后续决策质量下降，更容易冲动行事或选择最省力的默认选项。", example: "以色列法官在一天中批准假释的概率随时间（离上次休息时间）推移而下降；超市收银台旁摆放大量糖果等冲动购物商品；在线配置复杂产品（如汽车、电脑）后感到精疲力尽。", suggestion: "认识到意志力是有限资源。在精力充沛、血糖充足时（如上午）做重要决策。减少不必要的日常决策（如固定早餐、着装）。通过休息、放松和补充能量来恢复决策能力。", expertCommentary: "意志力如同肌肉，会疲劳。优化决策环境，减少不必要的选择，有助于保存心智资源。", theme: "决策制定类偏差" },
+            { id: 54, chineseName: "传染性偏见", englishName: "Contagion Bias", definition: "我们倾向于认为事物之间可以通过物理接触（哪怕是短暂的、间接的）或仅仅是象征性的联系，传递某种特性、“本质”或“负能量”，即使没有科学依据。", example: "不愿穿希特勒穿过的（即使洗干净的）毛衣；对名人或圣徒接触过的物品有特殊感觉，认为其带有某种“魔力”；朝带有亲人照片的靶子射击时犹豫不决、准确度下降。", suggestion: "认识到这种基于“接触传染”和象征意义的情感反应通常是非理性的。在做重要判断时，专注于事物的物理现实和客观属性。", expertCommentary: "这是基于魔法思维的古老倾向。区分象征意义和物理现实是理性的要求。", theme: "信念、记忆与注意类偏差" },
+            { id: 55, chineseName: "平均数的问题", englishName: "The Problem with Averages", definition: "在数据分布极不均匀（如存在极端值或遵循幂律分布）的情况下，“平均数”会严重扭曲或掩盖真实情况，失去其代表性意义。", example: "比尔盖茨进入一个满是普通人的房间会极大拉高该房间的“平均”财富；河流的“平均”深度为4英尺可能意味着大部分地方很浅但中间有20英尺深。", suggestion: "看到“平均数”时要保持警惕，主动思考其背后的数据分布形态。如果存在极端值或分布不均，应关注中位数、众数或具体分布情况，而非依赖平均数。", expertCommentary: "平均数对极端值非常敏感。在偏态分布数据中，中位数等其他统计量更能反映集中趋势。", theme: "概率与统计推理类偏差" },
+            { id: 56, chineseName: "动机排挤效应", englishName: "Motivation Crowding", definition: "当外部激励（尤其是金钱奖励）被引入一个原本由内在动机（如兴趣、利他主义、公民责任感、个人价值实现）驱动的行为领域时，外部激励可能会“挤出”或削弱原有的内在动机。", example: "给帮忙的朋友钱可能破坏友谊和助人为乐的内在满足感；为接受核废料储存库提供金钱补偿反而降低了居民基于公民责任感的支持率；对托儿所迟到父母罚款反而使迟到行为增加（将道德问题金钱化）。", suggestion: "对于需要创造力、热情、利他精神等内在动机驱动的任务，要非常谨慎地使用金钱激励，小额金钱激励尤其可能产生负面效果。关注非物质激励。", expertCommentary: "外部奖励可能将行为的意义从内在满足转变为获取奖励，从而削弱内在动力。需谨慎使用金钱激励。", theme: "决策制定类偏差" },
+            { id: 57, chineseName: "废话倾向", englishName: "Twaddle Tendency", definition: "使用大量华丽、空洞、模糊或专业术语堆砌的词语，来掩盖思想的贫乏、逻辑的混乱、观点的简单或纯粹的无知。", example: "某些学术（尤其是人文社科）论文；企业CEO在业绩不佳时发表的讲话；体育评论员对简单赛况的长篇大论分析；选美选手的空泛回答。", suggestion: "言为心声。力求思路清晰，表达简洁明了。警惕那些辞藻华丽但内容空洞、逻辑不清的言论。如果你自己没什么可说的，就保持沉默。", expertCommentary: "清晰的思考才能带来清晰的表达。警惕语言的复杂性掩盖内容的空洞。", theme: "信念、记忆与注意类偏差" },
+            { id: 58, chineseName: "威尔·罗杰斯现象", englishName: "Will Rogers Phenomenon", definition: "当一个集合中的某个元素从一个子集移动到另一个子集时，可能会发生两个子集的平均值都同时提高（或同时降低）的统计现象，即使集合的总体平均值没有改变。", example: "美国喜剧演员威尔·罗杰斯关于俄克拉荷马人移居加州提高两州平均智商的笑话；将业绩中等的销售员从A组调到业绩更差的B组，两组平均业绩都可能提高；癌症分期诊断标准变化导致各期生存率数据都“提高”。", suggestion: "警惕平均值的变化，尤其是在群体构成或分组标准发生调整时。要关注整体情况是否真的发生了实质性改善，而非仅仅是统计上的“幻象”。", expertCommentary: "这是统计操纵或误读的潜在来源。关注分组标准和整体变化，而非孤立的子集平均值。", theme: "概率与统计推理类偏差" },
+            { id: 59, chineseName: "信息偏误", englishName: "Information Bias", definition: "错误地认为掌握的信息越多，做出的决策就一定越好，因此倾向于收集尽可能多的信息，即使额外的信息是无关的、冗余的，甚至是干扰性的、有害的。", example: "医生为了“以防万一”进行过多不必要的检查；投资者沉迷于收集各种市场新闻和分析报告；选择酒店时过度研究大量评论和照片，导致决策瘫痪或选了最初就看中的那个。", suggestion: "专注于获取最关键、最相关的信息。认识到信息并非越多越好，收集信息有成本（时间、金钱），过多信息可能导致决策瘫痪或被次要信息干扰。有时信息更少反而能做出更好的决策（少即是多）。", expertCommentary: "信息过载可能导致分析瘫痪。区分信号与噪声，关注关键信息，是高效决策的前提。", theme: "决策制定类偏差" },
+            { id: 60, chineseName: "努力辩证化", englishName: "Effort Justification", definition: "对于我们投入了大量努力（包括时间、金钱、体力、甚至痛苦）才获得的东西或达成的目标，我们会倾向于不成比例地高估其价值和重要性，以使我们的努力显得合理和值得。", example: "自己动手组装的宜家家具比同等质量的成品家具感觉更珍贵；通过艰难入会仪式的兄弟会成员对其组织更加忠诚和看重；辛苦获得的MBA学位被认为对职业生涯至关重要。", suggestion: "在评估某件事物的价值时，应专注于其结果本身，尽量剥离你为之付出的努力所带来的情感溢价。客观地审视成果，而非沉浸在过程的艰辛中。", expertCommentary: "这是认知失调（ID 50）的一种表现，为过去的努力赋予更高的价值以减少不适感。客观评估成果本身是关键。", theme: "自我感知类偏差" },
+            { id: 61, chineseName: "小数定律", englishName: "The Law of Small Numbers", definition: "我们容易错误地认为小样本能够像大样本一样准确地反映总体的真实规律和概率分布，倾向于从少量数据中草率地得出过于绝对或普遍性的结论。", example: "根据某地几家分店的高/低失窃率就推广到所有分店；认为某小型初创公司招聘的几个高智商员工代表了所有初创公司都更聪明；过分相信个别案例或小规模研究的结果。", suggestion: "认识到小样本数据的随机波动性远大于大样本。对基于小样本得出的惊人结论或统计数据保持高度警惕，它们很可能只是随机现象。", expertCommentary: "小样本更容易出现极端结果，不能代表整体。警惕从个案或小数据中过度概括。", theme: "概率与统计推理类偏差" },
+            { id: 62, chineseName: "期望效应", englishName: "Expectations", definition: "我们持有的期望会深刻地影响我们的感知、行为，甚至能够改变客观现实。这包括了著名的安慰剂效应（积极期望带来改善）和反安慰剂效应（消极期望导致恶化）。", example: "罗森塔尔效应（教师对“有潜力”学生的期望真的提高了学生的智商表现）；安慰剂药物能够改善部分病人的病情；分析师对公司盈利的预测本身会影响股价。", suggestion: "提高对自己的期望，以及对你所爱的人的期望，这有助于提升动力。同时，降低对无法控制事物的期望（如股市），以避免不必要的失望。谨慎对待期望，认识其力量。", expertCommentary: "期望塑造现实，无论是在教育、医疗还是金融领域。理解并善用期望的力量，同时警惕其负面影响。", theme: "自我感知类偏差" },
+            { id: 63, chineseName: "简单逻辑", englishName: "Simple Logic / Cognitive Reflection Test (CRT)", definition: "我们倾向于依赖快速、直觉的思考（系统1），而懒于启动或不擅长启动缓慢、费力、更可靠的逻辑分析思考（系统2），导致在一些看似简单但实际上有逻辑陷阱的问题上出错。", example: "球和球拍总价1.1元，球拍比球贵1元，问球多少钱？（直觉答案0.1，正确答案0.05）；5台机器5分钟生产5件衬衫，100台机器生产100件衬衫要多久？（直觉100分钟，正确5分钟）；睡莲问题。", suggestion: "质疑自己的第一反应和直觉答案。对于涉及计算或逻辑推理的问题，放慢思考速度，主动启动理性分析系统（系统2）。", expertCommentary: "这些问题旨在测试个体抑制直觉反应、启动分析思维的能力。刻意放慢思考是关键。", theme: "信念、记忆与注意类偏差" },
+            { id: 64, chineseName: "福勒效应", englishName: "Forer Effect / Barnum Effect", definition: "人们倾向于高度认可那些模糊、笼统、普遍适用的人格描述，认为它们非常准确地揭示了自己的独特性格，即使这些描述适用于几乎所有人。", example: "星座运势、算命、手相、性格测试（如MBTI的部分解读）等伪科学之所以受欢迎，很大程度源于此效应。", suggestion: "对那些听起来非常符合自己、但又非常普遍和模糊的性格描述保持警惕。认识到这是一种心理技巧，而非真正的个性化评估。", expertCommentary: "模糊性和普遍适用性是此类描述被广泛接受的关键。批判性地审视其具体性和独特性。", theme: "自我感知类偏差" },
+            { id: 65, chineseName: "志愿者的愚蠢", englishName: "Volunteer's Folly", definition: "当一个拥有高时薪或高技能的人花费时间去做低技能要求的志愿工作时，从经济效益或社会总效益角度看，这可能是一种资源浪费。更优的选择可能是用同样时间去工作，然后将收入捐赠给相关组织。", example: "一个时薪500美元的摄影师花半天时间（价值2000美元）去搭建几个鸟舍，而一个时薪50美元的木匠可能做得更好更快。他不如工作一小时，捐出500美元。", suggestion: "评估自己做志愿工作的机会成本。优先考虑利用自己的专业技能进行志愿服务，或者通过捐款来支持公益事业，除非你的参与能带来巨大的宣传价值（如名人效应）。", expertCommentary: "考虑机会成本和比较优势，以最大化社会贡献。专业技能的运用或捐款可能比低技能劳动更有效。", theme: "决策制定类偏差" },
+            { id: 66, chineseName: "情感启发式", englishName: "Affect Heuristic", definition: "我们在做决策（尤其是复杂决策）时，往往不是依赖于理性分析风险和收益，而是依赖于对选项的整体情感反应（喜欢或不喜欢）。喜欢的事物感觉风险低、收益高，反之亦然。", example: "对核能、有机食品、转基因食品、摩托车等议题的风险收益判断，很大程度上取决于你对它们的第一印象（喜欢还是讨厌）；研究发现阳光明媚的早晨股市更可能上涨。", suggestion: "意识到情感在决策中的强大作用，它常常替代理性分析。尝试将风险和收益作为独立变量进行客观评估，警惕自己的“感觉良好”或“感觉糟糕”是否扭曲了判断。", expertCommentary: "情感是快速决策的向导，但也可能导致系统性偏差。有意识地将情感与理性分析分离是必要的。", theme: "决策制定类偏差" },
+            { id: 67, chineseName: "内省错觉", englishName: "Introspection Illusion", definition: "我们过度相信通过自我反省能够获得关于自身真实动机、信念和感受的准确认识，并且认为自己的内省比观察他人的行为更可靠。", example: "坚信自己的信念是经过深思熟虑、客观公正的；当别人不同意时，倾向于认为对方是无知、愚蠢或恶意的；为自己的偏好或行为编造看似合理的理由（事后合理化）。", suggestion: "对通过自我反省得出的结论保持高度批判的态度。认识到我们的内省过程很大程度上是自我构建和合理化的，并非直接读取内心真相。像怀疑别人的说法一样怀疑自己的想法。", expertCommentary: "我们对自身内部心理过程的直接洞察力有限。行为数据和外部反馈可能比内省更可靠。", theme: "自我感知类偏差" },
+            { id: 68, chineseName: "无法关闭的门", englishName: "Inability to Close Doors", definition: "我们有一种强烈的倾向去保留尽可能多的选择项，即使这些选择项价值不高或会分散我们的精力，因为我们害怕错过潜在的机会，不愿意彻底关闭任何一扇门。", example: "同时约会多个人而无法确定一段深入的关系；同时进行太多项目导致一事无成，无法专注；电脑上打开太多窗口；保留一堆可能永远用不上的旧物或信息。", suggestion: "认识到保留过多选择是有成本的（时间、精力、决策质量下降）。学会果断地关闭那些价值不高的选项。制定明确的战略（个人或组织层面），意味着决定“不做什么”。", expertCommentary: "害怕后悔（ID 82）和损失规避（ID 32）可能导致此行为。专注和战略性放弃是必要的。", theme: "决策制定类偏差" },
+            { id: 69, chineseName: "新事物狂热", englishName: "Neomania", definition: "对新奇、时髦的事物有一种不理性的痴迷和狂热，倾向于高估新事物的重要性和持久力，同时低估那些已经存在很久、经过时间考验的传统事物的价值和韧性。", example: "盲目追逐最新的电子产品、时尚潮流或管理理念；高估新技术的颠覆性，而忽视基础技术的持久生命力；预测未来时过度关注新近出现的技术和趋势。", suggestion: "对新事物保持审慎和批判的态度。用“林迪效应”（Lindy Effect：一个事物存在的时间越长，它就越有可能继续存在下去）来辅助判断事物的持久性。不要轻易抛弃经过时间考验的东西。", expertCommentary: "新奇事物具有吸引力，但其长期价值需要时间检验。林迪效应提供了一个有用的视角。", theme: "信念、记忆与注意类偏差" },
+            { id: 70, chineseName: "睡眠者效应", englishName: "Sleeper Effect", definition: "来自低可信度来源的信息，其说服力一开始会被打折扣，但随着时间的推移，人们会逐渐忘记信息的来源（但记住信息内容本身），从而导致该信息的说服力反而增强。", example: "战争期间的宣传片，即使士兵知道是宣传，其影响在数周后反而增强；负面竞选广告，即使标注了发起者，其抹黑信息会长期存在于选民记忆中。", suggestion: "警惕信息的来源，并努力记住它。对来自不可信来源的信息保持长期怀疑。避免接触被广告严重污染的信息源。", expertCommentary: "记忆中信息内容与来源的分离导致此效应。持续关注信息来源的可信度是关键。", theme: "信念、记忆与注意类偏差" },
+            { id: 71, chineseName: "选择性盲目", englishName: "Alternative Blindness", definition: "在做决策时，我们系统性地忘记将当前考虑的选项与所有其他可行的替代方案进行比较，或者只在非常有限的几个（通常是两个，如做或不做）选项中进行比较。", example: "只比较“读MBA”和“不读MBA”，而忽略了其他提升职业的途径（如读其他学位、创业、内部晋升等）；只比较“接受高风险手术”和“等待死亡”，而忽略了其他医院、其他疗法或姑息治疗等选项。", suggestion: "在做重要决策时，强制自己思考并列出所有可能的替代选项，并将当前选项与“次优选项”(next best alternative)进行明确比较。拓宽你的选择视野。", expertCommentary: "决策框架往往被不自觉地限制。主动拓展和评估所有可行选项，是做出更优决策的前提。", theme: "决策制定类偏差" },
+            { id: 72, chineseName: "社会比较偏误", englishName: "Social Comparison Bias", definition: "我们有与他人（尤其是与自己相似的人）进行比较的倾向，这种比较可能引发嫉妒、自卑或优越感，并可能导致非理性行为，例如阻碍那些可能超越自己的人。", example: "不愿意帮助可能在未来超越自己的同事或下属；学者在评审可能颠覆自己地位的年轻学者论文时可能更苛刻；B级人才倾向于雇佣C级人才以维持优越感。", suggestion: "专注于发展自己的“能力圈”和实现内在目标。有意识地减少或停止与他人的不利比较。乐于雇佣和培养比自己更优秀的人才，这从长远看对自己有利。", expertCommentary: "社会比较是人类天性，但可能导致负面情绪和行为。转向内部标准和自我提升更为积极。", theme: "社会性偏差" },
+            { id: 73, chineseName: "首因效应和近因效应", englishName: "Primacy and Recency Effects", definition: "我们对一系列信息的整体印象和记忆，主要由最先出现的信息（首因效应）和最后出现的信息（近因效应）决定，中间部分的信息影响力相对较弱。", example: "演讲的开头和结尾最重要；面试的第一印象和最后总结影响巨大；列表项目中的首项和末项更容易被记住。", suggestion: "在做评估（如面试、评价表现）时，要意识到首因和近因效应的存在，努力给予中间信息同等的权重，避免被开头和结尾过度影响。可以使用分段打分取平均等方法克服。", expertCommentary: "信息呈现的顺序影响其被感知和记忆的权重。在评估和沟通中需注意平衡。", theme: "信念、记忆与注意类偏差" },
+            { id: 74, chineseName: "“非我发明”症候群", englishName: "Not-Invented-Here Syndrome (NIH Syndrome)", definition: "我们倾向于高估自己（或自己团队、公司、国家）创造的想法、方案或产品的价值，而低估或排斥那些来自外部（他人、其他团队、其他文化）的同类想法或解决方案。", example: "公司内部部门更倾向于使用自研的、哪怕不太好用的系统，而非外部成熟的解决方案；瑞士某州长期抵制联邦关于女性选举权的决定；交通环岛在英国发明后很久才被其他国家接受。", suggestion: "对自己的想法保持客观和批判性的评估。主动、开放地了解和评估来自外部的观点和方案，认识到“外来的和尚”也可能“会念经”。", expertCommentary: "这是圈内偏见（ID 79）和禀赋效应（ID 23）在创新和采纳过程中的体现。开放性和客观评估是关键。", theme: "社会性偏差" },
+            { id: 75, chineseName: "黑天鹅事件", englishName: "The Black Swan", definition: "指那些极其罕见、完全超出我们预期范围、但一旦发生就会产生极其重大影响的事件。这类事件事前不可预测，但事后我们会试图解释它的发生，让它看起来似乎可以预测。", example: "互联网的崛起；911恐怖袭击；2008年金融危机；第一次世界大战的爆发；个人生活中颠覆性的遭遇（如意外中奖、重大事故）。", suggestion: "接受极端、不可预测事件存在的可能性。让自己处于可能受益于积极黑天鹅事件的环境中（如保持学习、尝试新领域、扩大社交网络）。同时，要努力规避那些可能被消极黑天鹅事件摧毁的风险（如避免高杠杆负债、保持财务稳健）。", expertCommentary: "黑天鹅事件挑战了基于历史数据进行预测的局限性。强调稳健性和适应性而非精确预测。", theme: "概率与统计推理类偏差" },
+            { id: 76, chineseName: "领域依赖性", englishName: "Domain Dependence", definition: "我们掌握的知识和技能往往与其习得的特定领域或情境紧密相关，很难自动、有效地迁移到其他看似不同的领域或情境中去应用。", example: "著名投资组合理论家哈里·马科维茨在个人养老金分配上采用简单的50/50策略；医生可能抽烟或生活不健康；擅长写小说的人可能不擅长装修房子。", suggestion: "认识到知识和技能迁移的困难性。在尝试将一个领域的知识应用到另一个领域时，要刻意练习和反思。主动学习跨学科的思维模型。", expertCommentary: "知识的迁移并非自动发生。刻意练习和抽象化原则有助于跨领域应用。", theme: "信念、记忆与注意类偏差" },
+            { id: 77, chineseName: "虚假同感偏差", englishName: "False-Consensus Effect", definition: "我们倾向于高估自己的观点、信念、偏好、价值观和习惯在人群中的普遍程度，错误地认为大多数人都和我们想的一样。", example: "认为自己喜欢的音乐风格或政治观点是主流；初创公司高估其产品对大众的吸引力；拒绝穿广告牌的学生认为大多数人也会拒绝。", suggestion: "认识到自己的观点和偏好并非普遍适用。不要假设与你想法不同的人是“不正常”或“愚蠢”的。主动质疑自己的假设，了解他人的真实想法。", expertCommentary: "此偏误源于以自我为中心的视角。主动寻求不同观点，进行市场调研等有助于校正。", theme: "社会性偏差" },
+            { id: 78, chineseName: "历史篡改", englishName: "Falsification of History", definition: "我们会无意识地、系统性地修改和重塑我们对过去的记忆，使其与我们现在的观点、信念和自我形象保持一致，从而产生一种“我一直都是这样想的/我一直都是对的”的错觉。", example: "人们回忆多年前对某个政治议题的看法时，会倾向于使其符合现在的立场；对重大事件（如911）的“闪光灯记忆”虽然感觉清晰，但细节上往往充满错误和重构。", suggestion: "认识到记忆是不可靠的、是动态重构的，而非精确录像。对自己的记忆（尤其是久远的或涉及强烈情感的）保持一定的怀疑态度。写日记有助于对照和保持客观。", expertCommentary: "记忆服务于现在的自我认知，而非精确记录过去。这与确认偏误（ID 7, 8）和认知失调（ID 50）相关。", theme: "信念、记忆与注意类偏差" },
+            { id: 79, chineseName: "圈内圈外偏见", englishName: "In-Group Out-Group Bias", definition: "我们天生倾向于强烈地认同自己所属的群体（圈内），对圈内成员表现出偏爱、信任和更积极的评价，同时对圈外群体持有偏见、刻板印象，并倾向于认为圈外成员具有更高的同质性。", example: "体育迷对自己支持的球队及其球迷的认同感和对对手球队的敌意；民族主义情绪；公司内部不同部门之间的隔阂与偏见；认为“我们的人”都很多样，而“他们”都一个样。", suggestion: "意识到群体认同感是一种强大的、源自进化的本能，但它会系统性地扭曲我们对事实的判断。对自己的偏见保持警惕。尝试理解和接触圈外群体，挑战刻板印象。", expertCommentary: "这是社会认同理论的核心表现。促进跨群体接触和强调共同身份有助于减少此偏见。", theme: "社会性偏差" },
+            { id: 80, chineseName: "模糊性规避", englishName: "Ambiguity Aversion", definition: "在面临选择时，我们倾向于选择那些概率已知的选项（即风险），而回避那些概率未知的选项（即不确定性或模糊性）。", example: "埃尔斯伯格悖论：人们宁愿从一个已知红黑球各占50%的箱子里抽球，也不愿从一个未知红黑球比例的箱子里抽球（即使理论上后者可能更有利）。", suggestion: "学会区分风险（概率已知）和不确定性/模糊性（概率未知）。认识到在现实世界中，多数重要决策都面临不确定性而非精确风险。要学会在模糊性中做决策，容忍未知。", expertCommentary: "对未知的厌恶导致此偏误。在创新和探索性活动中，容忍和管理模糊性是必要的。", theme: "决策制定类偏差" },
+            { id: 81, chineseName: "默认效应", englishName: "Default Effect", definition: "在存在一个预设选项（默认选项）的情况下，人们有强烈的倾向去接受这个默认选项，即使改变选项并不困难，也懒得去更改。", example: "器官捐赠选择：采取“默认同意”（需主动退出）的国家捐献率远高于采取“默认不同意”（需主动加入）的国家；软件安装或服务订阅时的默认设置；汽车广告中主推的默认颜色。", suggestion: "认识到默认选项具有强大的影响力。主动审视遇到的默认设置是否真正符合自己的最佳利益。可以利用默认选项来“助推”人们做出更好的选择（如养老金自动加入计划）。", expertCommentary: "默认选项利用了人们的惰性和现状偏见。它可以被用来设计更优的公共政策（“助推”）。", theme: "决策制定类偏差" },
+            { id: 82, chineseName: "害怕后悔", englishName: "Fear of Regret", definition: "对未来可能产生的后悔情绪的预期，会影响我们当下的决策，使我们倾向于做出更保守、更符合社会常规的选择，或者在面临“最后机会”时做出非理性决策。", example: "因为害怕选错股票而后悔，干脆不投资或随大流；因为害怕将来需要某件旧物而后悔扔掉，导致囤积；被“最后机会看到濒危犀牛”的广告打动而去旅游；在房产推销中因“最后一套”而恐慌性购买。", suggestion: "认识到后悔是一种正常的情绪体验，但不要让对未来可能后悔的过度恐惧主导现在的理性决策。理性评估所谓的“最后机会”是否真实且对自己重要。", expertCommentary: "预期后悔会使决策更趋保守或冲动。区分真实风险和对后悔情绪的恐惧是关键。", theme: "决策制定类偏差" },
+            { id: 83, chineseName: "凸显效应", englishName: "Salience Effect", definition: "对于那些更突出、更引人注目、更与众不同、更形象生动的的信息（即凸显信息），我们会给予其不成比例的关注和权重，而忽略那些虽然重要但平淡、抽象或隐藏的信息。", example: "媒体过度报道耸人听闻的犯罪或事故，导致人们高估其发生概率；将公司的某项成功或失败归因于某个近期发生的、引人注目的事件或人物（如CEO更迭）；投资时更容易受戏剧性新闻影响，而非关注长期基本面。", suggestion: "抵制那些最先跳入眼帘的、最显眼的解释。训练自己关注那些不那么引人注目但可能更具决定性的背景因素、长期趋势和隐藏信息。", expertCommentary: "此效应与可得性偏误（ID 11）密切相关。生动的信息更容易吸引注意力并影响判断。", theme: "信念、记忆与注意类偏差" },
+            { id: 84, chineseName: "“赌场盈利”效应", englishName: "House-Money Effect", definition: "我们倾向于将意外获得的钱（例如赢来的、捡到的、赠送的、退税等“天上掉下来的钱”）与辛苦赚来的钱区别对待，对前者会更大胆、更不理性地去花费或投资。", example: "赌徒用刚刚赢来的钱下更大的赌注；用退税款或年终奖金进行冲动消费；彩票中奖者挥霍无度。", suggestion: "认识到钱就是钱，其价值不应因来源不同而有所区别。对所有金钱（无论来源）都应保持同样的理性态度和审慎规划。", expertCommentary: "这是心理账户的一种表现，金钱被赋予了不同的标签。理性对待所有资产，无论其来源。", theme: "决策制定类偏差" },
+            { id: 85, chineseName: "拖延症", englishName: "Procrastination", definition: "倾向于推迟执行那些不愉快但重要、对长远有利的任务，而去选择做那些更轻松、更能带来即时满足感的事情。", example: "推迟健身、报税、写感谢信、开始重要项目、处理棘手问题等。", suggestion: "认识到拖延是非理性的，源于短期诱惑和意志力消耗。使用策略对抗拖延，如：设定明确且公开的截止日期；将大任务分解为小步骤；消除干扰源（如断网）；确保充足休息和能量补充以维持意志力。", expertCommentary: "拖延与双曲贴现（ID 51）相关，即对即时满足的偏好。有效的自我管理策略是克服拖延的关键。", theme: "决策制定类偏差" },
+            { id: 86, chineseName: "嫉妒", englishName: "Envy", definition: "对他人拥有的优越品质、财产、地位或成就感到不满、痛苦或怨恨。嫉妒通常发生在与我们自身情况相似（年龄、职业、地域等）的人之间。", example: "同事获得巨额奖金而自己只得到礼品券；邻居买了保时捷；其他作家更成功；其他CEO更受尊敬。", suggestion: "停止与他人进行不利的社会比较。专注于发展自己的“能力圈”，在自己擅长的领域做到最好。将嫉妒对象视为榜样，激励自己进步，但仅限于“你想成为的那个人”。", expertCommentary: "嫉妒是社会比较（ID 72）的负面产物。将比较转化为自我提升的动力，而非怨恨。", theme: "社会性偏差" },
+            { id: 87, chineseName: "拟人化", englishName: "Personification", definition: "相比于抽象的统计数据或逻辑论证，我们的大脑更容易对具体的人物、形象或生动的故事产生情感共鸣和做出反应。", example: "一个受饥饿儿童的照片比数百万饥饿儿童的统计数据更能激发人们的捐款意愿；小说通过讲述个体命运来反映宏大主题（如《愤怒的葡萄》之于大萧条）；媒体报道喜欢聚焦个体故事（“给新闻一张脸”）。", suggestion: "认识到人类对具体形象和故事的情感偏好。在接收信息时，要主动寻找和关注故事背后的事实、数据和统计分布。反之，在需要打动或说服别人时，善用具体的人物和故事。", expertCommentary: "具体化和故事化能增强信息的感染力，但也可能掩盖更广泛的统计现实。需平衡情感共鸣与理性分析。", theme: "信念、记忆与注意类偏差" },
+            { id: 88, chineseName: "注意力错觉", englishName: "Illusion of Attention", definition: "我们自信地认为自己能够注意到视野范围内发生的所有重要事情，但实际上我们的注意力是有限的，我们主要关注我们正在聚焦的目标，很容易忽略预期之外的、即使是非常显眼的事物（视而不见）。", example: "著名的“看不见的大猩猩”实验；开车时打电话会大大降低对路面突发状况的反应能力；组织中存在的显而易见但无人提及的重大问题（“房间里的大象”/“房间里的大猩猩”）。", suggestion: "承认自己的注意力资源是有限且有选择性的。有意识地拓宽关注范围，留意中心焦点之外的边缘信息。思考那些“可能被忽略”的、“未被提及”的潜在问题或机会。", expertCommentary: "注意力是一种有限资源。非注意盲视（inattentional blindness）是此错觉的典型表现。", theme: "信念、记忆与注意类偏差" },
+            { id: 89, chineseName: "策略性虚报", englishName: "Strategic Misrepresentation", definition: "在涉及自身利益的情况下（尤其是在竞争性或一次性博弈中），有策略地夸大自己的优势、能力、承诺或低估成本、风险，以增加获得目标（如工作、合同、项目批准）的可能性。", example: "求职者在面试中夸大自己的能力和过往成就；项目承包商在竞标中故意低估成本和工期；作者向出版社承诺不切实际的交稿日期以获得预付款。", suggestion: "对于他人的承诺和自我展示，要保持审慎，重点考察其过往的实际业绩和记录。对于项目计划，要参考类似项目的实际数据，进行严格的独立审查，并在合同中加入对成本和进度超支的惩罚性条款。", expertCommentary: "这是博弈论中的常见策略。尽职调查和核查机制是应对的关键。", theme: "决策制定类偏差" },
+            { id: 90, chineseName: "想得太多", englishName: "Overthinking", definition: "对于某些类型的任务或决策（尤其是那些依赖于熟练运动技能、直觉判断或长期经验的），过度的理性分析、反思和深思熟虑反而会干扰自然的发挥，导致表现下降或做出更差的选择。", example: "高尔夫球手在关键推杆时过度思考技术动作导致失误（范德维尔德案例）；蜈蚣被问及先迈哪条腿后无法走路；要求品酒者详细分析理由后其口味偏好发生改变。", suggestion: "区分需要直觉和需要分析的场景：对于熟练技能（运动、乐器）和基于进化或长期经验的快速判断（信任、简单偏好），最好相信直觉，避免过度分析。对于复杂、缺乏经验的、需要逻辑推理的决策（如投资），则必须进行冷静、理性的思考。", expertCommentary: "对于程序化、自动化的技能，过度分析会干扰其流畅性。区分何时依赖系统1（直觉）和系统2（分析）很重要。", theme: "决策制定类偏差" },
+            { id: 91, chineseName: "计划谬误", englishName: "Planning Fallacy", definition: "在预估完成一项未来任务所需的时间、成本、资源和风险时，我们倾向于系统性地过于乐观，低估实际所需，即使我们知道过去的类似项目也常常出现延误和超支。", example: "个人制定待办事项清单时总是安排过多；大型工程项目（如悉尼歌剧院）的工期和预算常数倍于最初计划；学生预估写论文时间远少于实际花费时间。", suggestion: "制定计划时要克服愿望思维。将注意力从项目内部细节转移到外部类似项目的实际数据（参考基准率）。进行“事前验尸”（Premortem）：假设项目已失败，反思可能的原因。", expertCommentary: "这是过度自信（ID 15）在计划领域的体现。采用外部视角和参考历史数据有助于做出更现实的计划。", theme: "决策制定类偏差" },
+            { id: 92, chineseName: "专业变形", englishName: "Déformation Professionnelle", definition: "指一个人因为其所受的专业训练和长期从事的职业，而形成一种固化的思维模式，倾向于从自己专业的角度去观察、分析和解决所有问题，即使这些问题超出了该专业的适用范围。", example: "外科医生倾向于用手术解决所有能沾边的医疗问题；军人优先考虑军事解决方案；工程师用工程思维分析人际关系；经济学家用模型解释社会现象。", suggestion: "认识到自身专业视角的局限性（“手里只有锤子，看什么都像钉子”）。主动学习和运用跨学科的思维模型，拓展自己的“工具箱”。面对问题时，寻求不同领域专家的意见。", expertCommentary: "专业知识是优势，但也可能成为思维的桎梏。跨学科学习和多元视角有助于克服此局限。", theme: "信念、记忆与注意类偏差" },
+            { id: 93, chineseName: "蔡格尼克记忆效应", englishName: "Zeigarnik Effect", definition: "对于未完成的任务或被打断的目标，我们的记忆会比已完成的任务更深刻、更持久，它们会持续占据我们的注意力，并在潜意识中“纠缠”我们，直到任务被完成或我们制定了明确的完成计划。", example: "餐厅服务员能清楚记住未结账顾客的所有点单细节，一旦结账就迅速忘记；脑海里总想着那些没做完的工作或没回复的邮件。", suggestion: "利用此效应：如果想记住某事，可在关键节点中断。对抗此效应：为所有悬而未决的任务（无论大小）制定一个清晰、具体的下一步行动计划，并记录下来，有助于让大脑“安心”，释放认知资源。", expertCommentary: "未完成的任务会持续占用认知资源。制定明确计划或完成任务有助于释放这些资源。", theme: "信念、记忆与注意类偏差" },
+            { id: 94, chineseName: "技能错觉", englishName: "Illusion of Skill", definition: "在那些结果很大程度上受运气和随机性影响的领域（如金融市场、某些商业领域），我们倾向于高估个人技能、才华和努力的作用，而低估运气和外部环境的影响。", example: "投资者将牛市中的盈利归功于自己的选股能力；CEO将公司在行业景气时的成功主要归因于自己的领导力；连续创业成功者比例极低，表明运气成分大于技能。", suggestion: "客观看待成功，尤其是在运气成分大的领域。区分哪些领域技能是决定性的（如飞行员、水管工），哪些领域运气更重要。对金融市场等领域的“大师”保持怀疑。", expertCommentary: "此偏误与控制错觉（ID 17）和自利偏误（ID 45）相关。区分运气与技能，对于正确评估和学习至关重要。", theme: "自我感知类偏差" },
+            { id: 95, chineseName: "正面特征效应", englishName: "Feature-Positive Effect", definition: "我们的大脑更容易注意到、记住和重视“存在”的事物或特征（正面特征），而倾向于忽略或轻视“不存在”的事物或特征（负面特征），即使后者同样重要甚至更重要。", example: "更容易被“吸烟导致肺癌”的警示打动，而非“不吸烟让你远离肺癌”；更容易发现清单上存在的问题，而忽略清单未涵盖的问题；更关注战争的存在，而非和平时期战争的缺席；产品宣传突出优点，隐藏缺点。", suggestion: "有意识地思考和关注那些“缺失”的信息、未发生的事件、不存在的特征。认识到“没有”也是一种重要的信息。", expertCommentary: "“存在”比“缺失”更容易被感知。在评估和决策中，主动考虑“负面特征”或“未发生的情况”是必要的。", theme: "信念、记忆与注意类偏差" },
+            { id: 96, chineseName: "捡樱桃", englishName: "Cherry Picking", definition: "为了支持自己的观点或展示良好形象，有意选择性地展示那些对自己有利的证据、成功案例或数据点，而刻意忽略、隐藏或轻描淡写那些不利的信息。", example: "公司年报只突出成就，淡化或不提失败的项目和未达成的目标；酒店宣传册只展示最好看的照片；引用研究时只选支持自己论点的数据。", suggestion: "保持批判性思维。当只看到好消息或有利证据时，要主动询问或寻找那些被“遗漏”的信息、失败案例、负面数据和未达成的目标。", expertCommentary: "这是确认偏误（ID 7, 8）在信息呈现上的主动应用。警惕片面信息，寻求完整图景。", theme: "信念、记忆与注意类偏差" },
+            { id: 97, chineseName: "单一因果谬误", englishName: "Fallacy of the Single Cause", definition: "倾向于将复杂的事件（如战争、经济危机、公司成功或失败、社会现象等）简单地归结为单一的原因，而忽略了其背后众多相互作用、盘根错节的因素。", example: "将第一次世界大战归咎于萨拉热窝事件；将金融危机归咎于格林斯潘的货币政策；将公司成功完全归因于某个明星CEO或单一策略。", suggestion: "认识到大多数重要事件都是多重因素复杂互动的结果。避免寻找单一的“罪魁祸首”或“灵丹妙药”。进行系统性思考，探究事件背后的因素网络。", expertCommentary: "复杂现象往往是多因素作用的结果。简化归因可能导致对问题本质的误解和无效的解决方案。", theme: "信念、记忆与注意类偏差" },
+            { id: 98, chineseName: "意向性处理错误", englishName: "Intention-to-Treat Error", definition: "在评估某项干预措施（如新药、新疗法、培训项目）的效果时，未能按照最初的意向性分组来分析所有参与者的数据，而是错误地将那些中途退出、未严格遵守方案或失访的样本排除或归入错误类别，从而导致对干预效果的评估产生系统性偏差。", example: "评估新药疗效时，只分析那些坚持服药且效果好的患者数据，而忽略了那些因副作用严重或病情恶化而中途退出试验的患者，使得药物看起来比实际更有效。", suggestion: "在评估研究或报告（尤其是医疗、商业干预效果）时，要检查其是否遵循了“意向性处理”（Intention-to-Treat）原则，即分析所有最初被随机分配到各组的参与者，无论他们后续是否完成干预。警惕因样本选择性流失导致的结果偏差。", expertCommentary: "这是临床试验和效果评估中保持分析客观性的重要原则，旨在避免因选择性样本排除导致的偏误。", theme: "概率与统计推理类偏差" },
+            { id: 99, chineseName: "新闻错觉", englishName: "News Illusion", definition: "错误地认为消费每日新闻能让我们更好地了解世界、做出更明智的决策，但实际上，新闻往往是肤浅、耸人听闻、负面、重复、时效性短且与个人长期决策无关的，反而可能扭曲我们的风险认知、浪费宝贵时间并导致焦虑。", example: "每天花费大量时间浏览各种新闻APP、网站、电视节目，但年底回想，几乎没有哪条新闻真正帮助自己做出了更好的生活或职业决策；对飞机失事、恐怖袭击等小概率事件过度担忧。", suggestion: "认识到新闻的本质（商业模式、信息筛选机制）及其对思维的负面影响。大幅减少或完全停止消费每日新闻。用深度文章、书籍和与真人（而非媒体）的交流来代替，以获取更深刻、更有价值的见解。", expertCommentary: "新闻的即时性和选择性报道可能导致对世界不成比例的认知。寻求深度、背景性和结构化的信息来源可能更有益。", theme: "信念、记忆与注意类偏差" }
+        ];
+
+        const themes = [
+            "决策制定类偏差",
+            "信念、记忆与注意类偏差",
+            "社会性偏差",
+            "概率与统计推理类偏差",
+            "自我感知类偏差"
+        ];
+
+        const themeDetails = {
+            "决策制定类偏差": {
+                description: "影响选择的做出，常涉及简化复杂决策的启发式方法。",
+                examples: ["沉没成本谬误 (ID 5)", "锚定效应 (ID 30)", "框架效应 (ID 42)", "损失规避 (ID 32)"]
+            },
+            "信念、记忆与注意类偏差": {
+                description: "影响我们如何形成、维持和回忆信念，以及我们关注什么信息。",
+                examples: ["确认偏误 (ID 7/8)", "后见之明偏误 (ID 14)", "可得性偏误 (ID 11)", "注意力错觉 (ID 88)"]
+            },
+            "社会性偏差": {
+                description: "源于我们与他人和群体的互动及感知。",
+                examples: ["社会认同 (ID 4)", "权威偏误 (ID 9)", "基本归因错误 (ID 36)", "圈内圈外偏见 (ID 79)"]
+            },
+            "概率与统计推理类偏差": {
+                description: "导致在判断可能性、理解随机性和解读统计信息时出错。",
+                examples: ["幸存者偏差 (ID 1)", "集群错觉 (ID 3)", "赌徒谬误 (ID 29)", "忽视基本概率偏误 (ID 28)"]
+            },
+            "自我感知类偏差": {
+                description: "影响我们如何看待自己、自身能力及贡献。",
+                examples: ["过度自信效应 (ID 15)", "自利偏误 (ID 45)", "“司机”知识 (ID 16)", "控制错觉 (ID 17)"]
+            }
+        };
+        
+        let currentBiasIndex = -1;
+        let filteredBiases = [...biasesData];
+        let themeChart = null;
+
+        const mainContent = document.getElementById('main-content');
+        const biasListUl = document.getElementById('bias-list');
+        const searchInput = document.getElementById('search-input');
+        const themeFilterSelect = document.getElementById('theme-filter');
+        
+        const navIntro = document.getElementById('nav-intro');
+        const navThemes = document.getElementById('nav-themes');
+
+        function applyContentTransition(element, contentSetter) {
+            element.classList.remove('content-fade-enter-active');
+            element.classList.add('content-fade-enter');
+            requestAnimationFrame(() => {
+                contentSetter();
+                element.classList.add('content-fade-enter-active');
+            });
+        }
+
+        function displayIntro() {
+            currentBiasIndex = -1;
+            updateActiveNav(navIntro);
+            const content = `
+                <div class="bg-white shadow-lg rounded-lg p-6 md:p-8">
+                    <h2 class="text-3xl font-bold text-blue-600 mb-6 border-b pb-3">人类认知偏差：导论</h2>
+                    
+                    <section class="mb-8">
+                        <h3 class="text-2xl font-semibold text-slate-700 mb-3">1.1. 认知偏差的定义</h3>
+                        <p class="text-lg leading-relaxed text-slate-600">认知偏差是指个体在判断过程中系统性地偏离规范或理性标准的模式。这些偏差并非随机的思维错误，而是人类认知固有的特征，通常源于大脑为简化信息处理而采用的心理捷径（即启发式方法）。尽管这些捷径在许多情况下能够帮助我们快速做出决策，但在特定情境下，它们也可能导致系统性的判断失误。例如，可得性偏误（ID 11）和锚定效应（ID 30）的定义均描述了这种依赖直觉、简化处理过程的倾向，这揭示了认知偏差作为认知效率与准确性之间权衡产物的本质。本应用列举了多达99种不同的认知偏差，这本身就说明了这些并非罕见的思维缺陷，而是人类认知中普遍存在的模式。</p>
+                    </section>
+
+                    <section class="mb-8">
+                        <h3 class="text-2xl font-semibold text-slate-700 mb-3">1.2. 理解认知偏差的重要性</h3>
+                        <p class="text-lg leading-relaxed text-slate-600">对认知偏差的认识和理解在个人生活、职业领域（如商业、医疗、法律）乃至社会层面都至关重要。未能识别的认知偏差可能导致决策失误、财务损失、社会不公，甚至阻碍创新。例如，沉没成本谬误（ID 5）可能导致个体或组织在前景不佳的项目上持续投入，仅仅因为已经付出了成本；而过度自信效应（ID 15）则可能使人低估风险，做出鲁莽的决策。表格中每一项偏差所附带的“例子”和“建议”栏目，也间接印证了这一点：它们不仅展示了偏差可能带来的负面后果，也指明了改进的方向。因此，理解认知偏差是向着更优决策和结果迈出的积极一步。</p>
+                    </section>
+
+                    <section class="mb-8">
+                        <h3 class="text-2xl font-semibold text-slate-700 mb-3">1.3. 本次呈现的认知偏差概述</h3>
+                        <p class="text-lg leading-relaxed text-slate-600">本应用将依据数据，对99种不同的认知偏差进行详细阐述。每一种偏差都将包含其ID、中文名、英文名、定义、具体案例、应对建议以及专家点评，旨在为中文读者提供一个全面而系统的认知偏差参考。</p>
+                        <p class="text-lg leading-relaxed text-slate-600 mt-4">欢迎您通过侧边栏的列表、搜索功能或主题筛选来探索这些认知偏差。点击导航栏的“主题分类与概览”可以查看认知偏差的整体分类情况。</p>
+                    </section>
+                     <section class="mb-8">
+                        <h3 class="text-2xl font-semibold text-slate-700 mb-3">第四部分：总结与关键启示</h3>
+                        <h4 class="text-xl font-semibold text-slate-600 mt-4 mb-2">4.1. 认知偏差本质的回顾</h4>
+                        <p class="text-lg leading-relaxed text-slate-600">通过对这99种认知偏差的梳理，可以再次强调，认知偏差是人类思维的固有组成部分，而非个体缺陷的标志。它们往往源于大脑为适应复杂环境而进化出的高效信息处理机制。对这些偏误的觉察，是迈向更理性思考和明智决策的第一步。</p>
+                        
+                        <h4 class="text-xl font-semibold text-slate-600 mt-6 mb-2">4.2. 缓解认知偏差的通用策略</h4>
+                        <p class="text-lg leading-relaxed text-slate-600">尽管每种认知偏差有其独特性，但从提供的众多“建议”中，可以提炼出一些通用的缓解策略：</p>
+                        <ul class="list-disc list-inside text-lg leading-relaxed text-slate-600 space-y-1 mt-2">
+                            <li>培养元认知能力：即“思考自己的思考过程”，反思判断和决策的依据。</li>
+                            <li>放慢思考节奏：在面临重要决策时，有意识地从依赖直觉的系统1思维切换到更审慎、分析性的系统2思维。</li>
+                            <li>寻求多元视角：主动接触和吸纳与自身观点不同的信息和意见，挑战既有假设。</li>
+                            <li>依赖数据与客观标准：减少对直觉、轶事或易得性信息的依赖，转而寻求客观数据和统计证据。</li>
+                            <li>理解统计学原理：提升对概率、随机性及统计推断的理解，有助于避免许多与数字相关的偏误。</li>
+                            <li>关注过程而非仅结果：评价决策的质量应基于决策时的信息和逻辑，而非仅仅依据其最终结果，尤其当运气成分较大时。</li>
+                        </ul>
+                        <p class="text-lg leading-relaxed text-slate-600 mt-3">这些策略的共同之处在于，它们都要求个体展现出一定程度的智识谦逊——承认自身认知能力的局限性，并愿意付出额外的认知努力以追求更准确的判断和更优的决策。</p>
+
+                        <h4 class="text-xl font-semibold text-slate-600 mt-6 mb-2">4.3. 批判性思维的持续旅程</h4>
+                        <p class="text-lg leading-relaxed text-slate-600">克服认知偏差并非一劳永逸的任务，而是一个持续学习、自我反思和刻意练习的过程。鼓励每一位信息接收者和决策者，将对认知偏差的理解应用于日常生活和工作中，不断提升自身的批判性思维能力。一个社会若其成员能更广泛地认识并积极应对自身的认知局限，则更有可能在个体选择、专业实践乃至公共事务中展现出更高的理性和效率，从而促进整体的福祉与创新。</p>
+                    </section>
+                </div>
+            `;
+            applyContentTransition(mainContent, () => mainContent.innerHTML = content);
+        }
+
+        function displayThemes() {
+            currentBiasIndex = -1;
+            updateActiveNav(navThemes);
+            const themeCounts = biasesData.reduce((acc, bias) => {
+                acc[bias.theme] = (acc[bias.theme] || 0) + 1;
+                return acc;
+            }, {});
+
+            let tableRows = '';
+            themes.forEach(themeName => {
+                tableRows += `
+                    <tr class="border-b border-slate-200 hover:bg-slate-50">
+                        <td class="py-3 px-4 md:px-6 text-slate-700 font-medium">${themeName}</td>
+                        <td class="py-3 px-4 md:px-6 text-slate-600">${themeDetails[themeName].description}</td>
+                        <td class="py-3 px-4 md:px-6 text-slate-600">
+                            <ul class="list-disc list-inside text-sm">
+                                ${themeDetails[themeName].examples.slice(0,3).map(ex => `<li>${ex}</li>`).join('')}
+                                ${themeDetails[themeName].examples.length > 3 ? '<li>...等</li>' : ''}
+                            </ul>
+                        </td>
+                        <td class="py-3 px-4 md:px-6 text-center text-slate-700 font-medium">${themeCounts[themeName] || 0}</td>
+                    </tr>
+                `;
+            });
+            
+            const content = `
+                <div class="bg-white shadow-lg rounded-lg p-6 md:p-8">
+                    <h2 class="text-3xl font-bold text-blue-600 mb-6 border-b pb-3">认知偏差主题分类与概览</h2>
+                    <p class="text-lg leading-relaxed text-slate-600 mb-6">为了更好地理解和梳理这99种认知偏差，我们将它们归入不同的主题类别。这种分类有助于揭示认知偏差的宏观模式，以及人类认知的不同方面是如何易于产生系统性偏误的。下表总结了主要的认知偏差主题及其描述和示例。图表则直观展示了各类偏差的数量分布。</p>
+                    
+                    <div class="mb-8 chart-container">
+                        <canvas id="themeChart"></canvas>
+                    </div>
+
+                    <h3 class="text-2xl font-semibold text-slate-700 mb-4 mt-8">认知偏差主题分类表</h3>
+                    <div class="overflow-x-auto rounded-lg border border-slate-200">
+                        <table class="min-w-full bg-white">
+                            <thead class="bg-slate-100">
+                                <tr>
+                                    <th class="py-3 px-4 md:px-6 text-left text-sm font-semibold text-slate-600 uppercase tracking-wider">类别名称</th>
+                                    <th class="py-3 px-4 md:px-6 text-left text-sm font-semibold text-slate-600 uppercase tracking-wider">描述</th>
+                                    <th class="py-3 px-4 md:px-6 text-left text-sm font-semibold text-slate-600 uppercase tracking-wider">示例偏差 (及ID)</th>
+                                    <th class="py-3 px-4 md:px-6 text-center text-sm font-semibold text-slate-600 uppercase tracking-wider">数量</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-200">
+                                ${tableRows}
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="text-sm text-slate-500 mt-4">此分类表的价值在于：首先，面对数量庞大的99种偏差，分类提供了结构，使信息更易于消化和管理。其次，它帮助受众识别模式。这种基于主题的理解，相比于记忆一个冗长无序的列表，更有助于深度学习和知识保留。</p>
+                </div>
+            `;
+            applyContentTransition(mainContent, () => {
+                mainContent.innerHTML = content;
+                renderThemeChart(themeCounts);
+            });
+        }
+        
+        function renderThemeChart(themeCounts) {
+            const chartCanvas = document.getElementById('themeChart');
+            if (!chartCanvas) return;
+            const ctx = chartCanvas.getContext('2d');
+
+            const chartData = {
+                labels: themes,
+                datasets: [{
+                    label: '认知偏差数量',
+                    data: themes.map(theme => themeCounts[theme] || 0),
+                    backgroundColor: [
+                        'rgba(59, 130, 246, 0.7)',  // blue-500
+                        'rgba(16, 185, 129, 0.7)', // emerald-500
+                        'rgba(239, 68, 68, 0.7)',   // red-500
+                        'rgba(245, 158, 11, 0.7)',  // amber-500
+                        'rgba(139, 92, 246, 0.7)'   // violet-500
+                    ],
+                    borderColor: [
+                        'rgba(59, 130, 246, 1)',
+                        'rgba(16, 185, 129, 1)',
+                        'rgba(239, 68, 68, 1)',
+                        'rgba(245, 158, 11, 1)',
+                        'rgba(139, 92, 246, 1)'
+                    ],
+                    borderWidth: 1
+                }]
+            };
+
+            if (themeChart) {
+                themeChart.destroy();
+            }
+
+            themeChart = new Chart(ctx, {
+                type: 'bar',
+                data: chartData,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y', // Makes it a horizontal bar chart for better label readability
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: '偏差数量',
+                                font: { size: 14 }
+                            }
+                        },
+                        y: {
+                           ticks: {
+                                autoSkip: false, // Ensure all labels are shown
+                                font: { size: 12 }
+                           }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false // Datasets label is enough, or remove if only one dataset
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.x !== null) {
+                                        label += context.parsed.x;
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+
+        function displayBias(biasIndex) {
+            if (biasIndex < 0 || biasIndex >= filteredBiases.length) return;
+            
+            currentBiasIndex = biasesData.findIndex(b => b.id === filteredBiases[biasIndex].id);
+            const bias = filteredBiases[biasIndex];
+            updateActiveNav(null, bias.id); // Update sidebar list active item
+
+            const content = `
+                <div class="bg-white shadow-lg rounded-lg p-6 md:p-8">
+                    <div class="flex justify-between items-center mb-6 border-b pb-3">
+                        <h2 class="text-3xl font-bold text-blue-600">${bias.chineseName} <span class="text-xl text-slate-500">(${bias.englishName})</span></h2>
+                        <span class="text-lg font-semibold text-slate-400">ID: ${bias.id}</span>
+                    </div>
+
+                    <div class="mb-6">
+                        <h3 class="text-xl font-semibold text-slate-700 mb-2">定义 (Definition)</h3>
+                        <p class="text-lg leading-relaxed text-slate-600">${bias.definition}</p>
+                    </div>
+
+                    <div class="mb-6">
+                        <h3 class="text-xl font-semibold text-slate-700 mb-2">例子 (Example)</h3>
+                        <blockquote class="border-l-4 border-blue-300 pl-4 py-2 bg-blue-50 text-slate-600 text-lg leading-relaxed italic">${bias.example}</blockquote>
+                    </div>
+
+                    <div class="mb-6">
+                        <h3 class="text-xl font-semibold text-slate-700 mb-2">建议 (Suggestion)</h3>
+                        <p class="text-lg leading-relaxed text-slate-600 bg-amber-50 border-l-4 border-amber-300 p-4 rounded-r-md">${bias.suggestion}</p>
+                    </div>
+                    
+                    ${bias.expertCommentary ? `
+                    <div class="mb-6">
+                        <h3 class="text-xl font-semibold text-slate-700 mb-2">专家点评 (Expert Commentary)</h3>
+                        <p class="text-lg leading-relaxed text-slate-600 border-l-4 border-emerald-300 p-4 bg-emerald-50 rounded-r-md">${bias.expertCommentary}</p>
+                    </div>` : ''}
+                    
+                    <div class="mt-8 flex justify-between">
+                        <button id="prev-bias" class="px-6 py-2 bg-slate-200 text-slate-700 rounded-md hover:bg-slate-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" ${biasIndex === 0 ? 'disabled' : ''}>&larr; 上一个</button>
+                        <button id="next-bias" class="px-6 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" ${biasIndex === filteredBiases.length - 1 ? 'disabled' : ''}>下一个 &rarr;</button>
+                    </div>
+                </div>
+            `;
+            applyContentTransition(mainContent, () => mainContent.innerHTML = content);
+
+            document.getElementById('prev-bias')?.addEventListener('click', () => displayBias(biasIndex - 1));
+            document.getElementById('next-bias')?.addEventListener('click', () => displayBias(biasIndex + 1));
+        }
+
+        function populateBiasList() {
+            biasListUl.innerHTML = '';
+            filteredBiases.forEach((bias, index) => {
+                const li = document.createElement('li');
+                li.innerHTML = `<a href="#" data-id="${bias.id}" class="bias-item block py-2 px-3 text-slate-700 hover:bg-blue-100 hover:text-blue-700 rounded-md transition-colors truncate" title="${bias.chineseName} (${bias.englishName})">${bias.id}. ${bias.chineseName}</a>`;
+                li.querySelector('a').addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const originalIndexInFiltered = filteredBiases.findIndex(b => b.id === bias.id);
+                    displayBias(originalIndexInFiltered);
+                });
+                biasListUl.appendChild(li);
+            });
+        }
+        
+        function updateActiveNav(activeNavLink, activeBiasId = null) {
+            // Clear active state from main nav links
+            [navIntro, navThemes].forEach(link => link.classList.remove('bg-blue-100', 'text-blue-700', 'font-semibold'));
+            
+            // Set active state for main nav link
+            if (activeNavLink) {
+                activeNavLink.classList.add('bg-blue-100', 'text-blue-700', 'font-semibold');
+            }
+
+            // Clear active state from bias list items
+            document.querySelectorAll('#bias-list .bias-item').forEach(item => {
+                item.classList.remove('bg-blue-100', 'text-blue-700', 'font-semibold');
+            });
+
+            // Set active state for bias list item
+            if (activeBiasId !== null) {
+                const activeBiasItem = document.querySelector(`#bias-list .bias-item[data-id='${activeBiasId}']`);
+                if (activeBiasItem) {
+                    activeBiasItem.classList.add('bg-blue-100', 'text-blue-700', 'font-semibold');
+                    activeBiasItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            } else if (!activeNavLink) { // If no main nav link is active, and no bias is active, clear all bias list active states
+                 document.querySelectorAll('#bias-list .bias-item').forEach(item => {
+                    item.classList.remove('bg-blue-100', 'text-blue-700', 'font-semibold');
+                });
+            }
+        }
+
+
+        function filterAndSearchBiases() {
+            const searchTerm = searchInput.value.toLowerCase();
+            const selectedTheme = themeFilterSelect.value;
+
+            filteredBiases = biasesData.filter(bias => {
+                const matchesSearch = (
+                    bias.chineseName.toLowerCase().includes(searchTerm) ||
+                    bias.englishName.toLowerCase().includes(searchTerm) ||
+                    bias.id.toString().includes(searchTerm)
+                );
+                const matchesTheme = (selectedTheme === 'all' || bias.theme === selectedTheme);
+                return matchesSearch && matchesTheme;
+            });
+            populateBiasList();
+            if (filteredBiases.length > 0 && currentBiasIndex === -1 && !document.querySelector('#nav-intro.bg-blue-100') && !document.querySelector('#nav-themes.bg-blue-100')) {
+                 // If no specific section is active, and list is filtered, don't auto-select first item.
+                 // User must click to see details.
+            } else if (filteredBiases.length === 0) {
+                mainContent.innerHTML = `<div class="bg-white shadow-lg rounded-lg p-6 md:p-8 text-center"><p class="text-xl text-slate-500">未找到匹配的认知偏差。</p></div>`;
+            }
+        }
+
+        function populateThemeFilter() {
+            themes.forEach(theme => {
+                const option = document.createElement('option');
+                option.value = theme;
+                option.textContent = theme;
+                themeFilterSelect.appendChild(option);
+            });
+        }
+
+        // Event Listeners
+        searchInput.addEventListener('input', filterAndSearchBiases);
+        themeFilterSelect.addEventListener('change', filterAndSearchBiases);
+        
+        navIntro.addEventListener('click', (e) => { e.preventDefault(); displayIntro(); });
+        navThemes.addEventListener('click', (e) => { e.preventDefault(); displayThemes(); });
+
+        // Initial setup
+        populateThemeFilter();
+        populateBiasList();
+        displayIntro(); // Display intro by default
+
+    </script>
+</body>
+</html>
